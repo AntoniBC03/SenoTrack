@@ -4,6 +4,7 @@ import pandas as pd
 import os
 from fpdf import FPDF
 
+
 # Configuração da página - Tema profissional e amplo
 st.set_page_config(page_title="SenoTrack Enterprise", page_icon="🔬", layout="wide")
 
@@ -103,9 +104,8 @@ with aba_individual:
             
             with col_3d:
                 try:
-                    url_mol = f"https://molview.org/?q={composto_a}"
-                    st.markdown(f'<iframe src="{url_mol}" height="450px" width="100%" frameborder="0"></iframe>', unsafe_allow_html=True)
-                    st.caption("Visualização 3D (Interface externa)")
+                    url_sdf = f"https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/name/{composto_a}/SDF?record_type=3d"
+                    res_sdf = requests.get(url_sdf)
                     
                     if res_sdf.status_code == 200:
                         sdf_data = res_sdf.text
@@ -130,38 +130,17 @@ with aba_individual:
 # ABA 2: PROCESSAMENTO DE LOTES HOSPITALARES (CÓDIGO INTEGRADO)
 # =====================================================================
 with aba_lote:
-    arquivo_upload = st.file_uploader("Carregue arquivo:", type=["xlsx", "csv"])
-    if arquivo_upload:
-        df_lote = pd.read_csv(arquivo_upload) if arquivo_upload.name.endswith('.csv') else pd.read_excel(arquivo_upload)
-        
-        # Processamento...
-        lista_dados = []
-        for comp in df_lote.iloc[:, 0]:
-            dados = obter_dados_cientificos(str(comp))
-            lista_dados.append(dados)
-        
-        df_exibicao = pd.DataFrame(lista_dados)
-        st.table(df_exibicao)
-
-        # --- GERAÇÃO DO PDF CORRIGIDA ---
-        pdf = FPDF()
-        pdf.add_page()
-        pdf.set_font("Helvetica", size=12)
-        pdf.cell(0, 10, "Laudo Técnico SenoTrack", ln=True, align="C")
-        for _, row in df_exibicao.iterrows():
-            pdf.cell(0, 10, f"Aplicação: {row['aplicacao']}", ln=True)
-        
-        # GERAR BYTES FORA DO LOOP
-        pdf_bytes = pdf.output(dest='S').encode('latin-1')
-
-        # BOTÃO ÚNICO FORA DO LOOP
-        st.download_button(
-            label="📥 Baixar Laudo Clínico Executivo (PDF)",
-            data=pdf_bytes,
-            file_name="laudo_senotrack.pdf",
-            mime="application/pdf",
-            key="btn_download_lote" # Chave única para o botão
-        )
+    st.subheader("📊 Análise Avançada de Lotes e Sinergias")
+    
+    # 1. Botão para baixar arquivo de exemplo útil
+    if os.path.exists("modelo_triagem_senotrack.xlsx"):
+        with open("modelo_triagem_senotrack.xlsx", "rb") as file:
+            st.download_button(
+                label="📥 Baixar Planilha Modelo de Triagem", 
+                data=file, 
+                file_name="modelo_triagem_senotrack.xlsx", 
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
         
     # 2. Upload do arquivo do usuário
     arquivo_upload = st.file_uploader("Carregue o arquivo de triagem (.xlsx ou .csv):", type=["csv", "xlsx"])
@@ -395,15 +374,16 @@ with aba_lote:
                     pdf.multi_cell(0, 5, f"    {row['Mapeamento Pipeline']}")
                     pdf.ln(4)
                 
-                # Substitua a parte do pdf.output() por:
-                    pdf_bytes = pdf.output(dest='S').encode('latin-1') 
-
-                    st.download_button(
-                        label="📥 Baixar Laudo Clínico Executivo (PDF)",
-                        data=pdf_bytes,
-                        file_name="laudo_viabilidade_senotrack.pdf",
-                        mime="application/pdf"
-                    )
+                pdf_bytes = pdf.output()
+                
+                st.download_button(
+                    label="📥 Baixar Laudo Clínico Executivo (PDF)",
+                    data=bytes(pdf_bytes),
+                    file_name="laudo_viabilidade_senotrack.pdf",
+                    mime="application/pdf",
+                    type="primary"
+                )
+            else:
                 st.error("O arquivo enviado está vazio.")
         except Exception as e:
             st.error(f"Erro ao processar lote: {e}")
