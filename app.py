@@ -3,8 +3,6 @@ import requests
 import pandas as pd
 import os
 from fpdf import FPDF
-import py3Dmol 
-from stmol import showmol
 
 # Configuração da página - Tema profissional e amplo
 st.set_page_config(page_title="SenoTrack Enterprise", page_icon="🔬", layout="wide")
@@ -105,8 +103,9 @@ with aba_individual:
             
             with col_3d:
                 try:
-                    url_sdf = f"https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/name/{composto_a}/SDF?record_type=3d"
-                    res_sdf = requests.get(url_sdf)
+                    url_mol = f"https://embed.molview.org/v1/?mode=balls&cid={composto_a}"
+                    st.components.v1.iframe(url_mol, height=450)
+                    st.caption("Visualização 3D via MolView")
                     
                     if res_sdf.status_code == 200:
                         sdf_data = res_sdf.text
