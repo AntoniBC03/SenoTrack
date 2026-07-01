@@ -1,10 +1,10 @@
 import streamlit as st
+import streamlit.components.v1 as components
 import requests
 import pandas as pd
 import os
 from fpdf import FPDF
 import py3Dmol
-from stmol import showmol
 
 
 # Configuração da página - Tema profissional e amplo
@@ -213,7 +213,7 @@ with aba_individual:
                         xyzview.zoomTo()
                         xyzview.setBackgroundColor("white")
 
-                        showmol(xyzview, height=450, width=450)
+                        components.html(xyzview._make_html(), height=470, width=470)
                         st.caption("Modelo 3D Rotacionável")
                     else:
                         st.caption("⚠️ Coordenadas 3D não localizadas para este composto")
