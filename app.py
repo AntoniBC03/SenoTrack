@@ -130,17 +130,38 @@ with aba_individual:
 # ABA 2: PROCESSAMENTO DE LOTES HOSPITALARES (CÓDIGO INTEGRADO)
 # =====================================================================
 with aba_lote:
-    st.subheader("📊 Análise Avançada de Lotes e Sinergias")
-    
-    # 1. Botão para baixar arquivo de exemplo útil
-    if os.path.exists("modelo_triagem_senotrack.xlsx"):
-        with open("modelo_triagem_senotrack.xlsx", "rb") as file:
-            st.download_button(
-                label="📥 Baixar Planilha Modelo de Triagem", 
-                data=file, 
-                file_name="modelo_triagem_senotrack.xlsx", 
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-            )
+    arquivo_upload = st.file_uploader("Carregue arquivo:", type=["xlsx", "csv"])
+    if arquivo_upload:
+        df_lote = pd.read_csv(arquivo_upload) if arquivo_upload.name.endswith('.csv') else pd.read_excel(arquivo_upload)
+        
+        # Processamento...
+        lista_dados = []
+        for comp in df_lote.iloc[:, 0]:
+            dados = obter_dados_cientificos(str(comp))
+            lista_dados.append(dados)
+        
+        df_exibicao = pd.DataFrame(lista_dados)
+        st.table(df_exibicao)
+
+        # --- GERAÇÃO DO PDF CORRIGIDA ---
+        pdf = FPDF()
+        pdf.add_page()
+        pdf.set_font("Helvetica", size=12)
+        pdf.cell(0, 10, "Laudo Técnico SenoTrack", ln=True, align="C")
+        for _, row in df_exibicao.iterrows():
+            pdf.cell(0, 10, f"Aplicação: {row['aplicacao']}", ln=True)
+        
+        # GERAR BYTES FORA DO LOOP
+        pdf_bytes = pdf.output(dest='S').encode('latin-1')
+
+        # BOTÃO ÚNICO FORA DO LOOP
+        st.download_button(
+            label="📥 Baixar Laudo Clínico Executivo (PDF)",
+            data=pdf_bytes,
+            file_name="laudo_senotrack.pdf",
+            mime="application/pdf",
+            key="btn_download_lote" # Chave única para o botão
+        )
         
     # 2. Upload do arquivo do usuário
     arquivo_upload = st.file_uploader("Carregue o arquivo de triagem (.xlsx ou .csv):", type=["csv", "xlsx"])
