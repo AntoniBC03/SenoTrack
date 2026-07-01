@@ -103,9 +103,9 @@ with aba_individual:
             
             with col_3d:
                 try:
-                    url_mol = f"https://embed.molview.org/v1/?mode=balls&cid={composto_a}"
-                    st.components.v1.iframe(url_mol, height=450)
-                    st.caption("Visualização 3D via MolView")
+                    url_mol = f"https://molview.org/?q={composto_a}"
+                    st.markdown(f'<iframe src="{url_mol}" height="450px" width="100%" frameborder="0"></iframe>', unsafe_allow_html=True)
+                    st.caption("Visualização 3D (Interface externa)")
                     
                     if res_sdf.status_code == 200:
                         sdf_data = res_sdf.text
@@ -374,16 +374,15 @@ with aba_lote:
                     pdf.multi_cell(0, 5, f"    {row['Mapeamento Pipeline']}")
                     pdf.ln(4)
                 
-                pdf_bytes = pdf.output(dest='S')
-                
-                st.download_button(
-                    label="📥 Baixar Laudo Clínico Executivo (PDF)",
-                    data=bytes,
-                    file_name="laudo_viabilidade_senotrack.pdf",
-                    mime="application/pdf",
-                    type="primary"
-                )
-            else:
+                # Substitua a parte do pdf.output() por:
+                    pdf_bytes = pdf.output(dest='S').encode('latin-1') 
+
+                    st.download_button(
+                        label="📥 Baixar Laudo Clínico Executivo (PDF)",
+                        data=pdf_bytes,
+                        file_name="laudo_viabilidade_senotrack.pdf",
+                        mime="application/pdf"
+                    )
                 st.error("O arquivo enviado está vazio.")
         except Exception as e:
             st.error(f"Erro ao processar lote: {e}")
