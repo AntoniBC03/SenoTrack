@@ -374,11 +374,11 @@ with aba_lote:
                     pdf.multi_cell(0, 5, f"    {row['Mapeamento Pipeline']}")
                     pdf.ln(4)
                 
-                pdf_bytes = pdf.output()
+                pdf_bytes = pdf.output(dest='S')
                 
                 st.download_button(
                     label="📥 Baixar Laudo Clínico Executivo (PDF)",
-                    data=bytes(pdf_bytes),
+                    data=bytes,
                     file_name="laudo_viabilidade_senotrack.pdf",
                     mime="application/pdf",
                     type="primary"
