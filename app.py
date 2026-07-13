@@ -12,9 +12,6 @@ st.set_page_config(page_title="SenoTrack Enterprise", page_icon="🔬", layout="
 
 
 # --- FUNÇÃO AUXILIAR: SANITIZAÇÃO DE TEXTO PARA O PDF ---
-# A fonte padrão do FPDF (Helvetica) só suporta caracteres latin-1.
-# Emojis e outros símbolos unicode quebram a geração do PDF, então
-# removemos qualquer caractere fora desse conjunto antes de escrever.
 def sanitize_pdf_text(texto):
     if texto is None:
         return ""
@@ -52,7 +49,6 @@ def gerar_pdf_laudo(df):
         pdf.multi_cell(0, 5, sanitize_pdf_text(f"Aplicacao: {row['Aplicação Médica']}"))
         pdf.ln(5)
 
-    # fpdf2 já retorna um bytearray pronto para uso em st.download_button
     return bytes(pdf.output())
 
 
@@ -104,51 +100,84 @@ def gerar_pdf_laudo_lote(df_exibicao):
     return bytes(pdf.output())
 
 
-# --- BASE DE CONHECIMENTO CIENTÍFICO AVANÇADO (SenoTrack Deep Intelligence) ---
-DADOS_AVANCADOS_SENOLITICOS = {
-    "quercetin": {
-        "aplicacao": "Flavonoide natural exógeno amplamente mapeado por sua capacidade de inibir a via de sobrevivência PI3K/AKT, induzindo seletivamente a apoptose em células senescentes. Quando administrado em protocolos combinados de pulso biológico, atua de forma sinérgica na depuração de células endoteliais senescentes e células progenitoras adiposas humanas, resultando em uma redução drástica na secreção do Fenótipo Secretor Associado à Senescência (SASP), mitigando a inflamação crônica sistêmica e preservando a integridade tecidual adjacente.",
-        "pipeline": "Atualmente posicionado em Fase II de Ensaios Clínicos Translacionais. Estudos robustos conduzidos por consórcios de longevidade celular (como a Mayo Clinic) validaram sua eficácia na redução da carga inflamatória em tecidos de pacientes com fibrose idiopática e nefropatia diabética. As principais barreiras de engenharia farmacêutica envolvem sua baixa biodisponibilidade oral crônica e rápida taxa de depuração metabólica hepática, impulsionando o desenvolvimento de formulações inovadoras baseadas em matrizes lipossomais e cocristalização molecular.",
-        "medicamentos": "Suplementos Clínicos, Combo D+Q (Dasatinib + Quercetina).",
+# --- BASE DE CONHECIMENTO CIENTÍFICO EXPANDIDA ---
+BASE_CONHECIMENTO_GLOBAL = {
+    "Longevidade Celular e Oncologia": {
+        "quercetin": {
+            "aplicacao": "Flavonoide natural exógeno que inibe a via de sobrevivência PI3K/AKT, induzindo seletivamente a apoptose em células senescentes e reduzindo drasticamente o SASP.",
+            "pipeline": "Fase II de Ensaios Clínicos Translacionais. Desafios focados em melhorar a baixa biodisponibilidade oral crônica através de matrizes lipossomais.",
+            "classe": "Flavonoide Senolítico"
+        },
+        "dasatinib": {
+            "aplicacao": "Potente inibidor de tirosina quinase. Atua desregulando as redes de sinalização pró-sobrevivência das células senescentes através de dosagem intermitente 'hit-and-run'.",
+            "pipeline": "Transição entre aplicações oncológicas e rejuvenescimento. Desafios envolvem o controle de toxicidade residual periférica.",
+            "classe": "Inibidor de Tirosina Quinase"
+        },
+        "navitoclax": {
+            "aplicacao": "Inibidor sintético que suprime os eixos antiapoptóticos BCL-2 e BCL-xL, reativando a morte celular programada em linhagens senescentes profundas.",
+            "pipeline": "Validação clínica oncológica. O maior desafio disruptivo reside no controle de efeitos colaterais como a trombocitopenia aguda.",
+            "classe": "Inibidor BCL-2 / BCL-xL"
+        },
+        "fisetin": {
+            "aplicacao": "Polifenol flavonoide de alta especificidade senolítica. Modula negativamente as redes NF-kB, reduzindo o ecossistema inflamatório SASP com alto perfil de segurança.",
+            "pipeline": "Fase II de estudos translacionais em humanos. Projetos priorizam a nanoencapsulação lipídica para otimização farmacocinética.",
+            "classe": "Flavonoide Senolítico"
+        },
+        "resveratrol": {
+            "aplicacao": "Agente senorfológico e modulador alostérico das Sirtuínas (SIRT1). Não induz a lise celular, mas reprograma epigeneticamente o microambiente contendo a inflamação.",
+            "pipeline": "Uso global consolidado como nutracêutico. Esforços atuais focam na síntese de ativadores sintéticos de segunda geração (STACs) com maior estabilidade.",
+            "classe": "Modulador de Sirtuína / Senomorfo"
+        }
     },
-    "dasatinib": {
-        "aplicacao": "Potente inibidor de tirosina quinase multicatalítico, originalmente aprovado para interventions oncológicas de alta precisão. No escopo da medicina da longevidade, atua desregulando as redes de sinalização pró-sobrevivência das células senescentes (redes efrina/ephrin). Sua principal assinatura farmacológica é a eliminação direcionada de pré-adipócitos humanos senescentes, promovendo uma varredura celular profunda através do mecanismo conhecido como dosagem intermitente 'hit-and-run', que minimiza a exposição sistêmica crônica.",
-        "pipeline": "Mapeado na transição estratégica entre aplicações oncológicas convencionais e protocolos clínicos de rejuvenescimento celular. O composto enfrenta rigorosa validação regulatória devido ao perfil de toxicidade residual (como risco de mielossupressão intermitente). Os pipelines científicos de ponta estão focados no refinamento de janelas posológicas ultraprecisas e na triagem de novos análogos sintéticos com janelas de segurança biológica significativamente expandidas para uso preventivo.",
-        "medicamentos": "Sprycel (Aprovado para Leucemia), Combo D+Q.",
-    },
-    "navitoclax": {
-        "aplicacao": "Inibidor sintético de alta afinidade projetado para interagir diretamente com os domínios BH3 das proteínas pró-sobrevivência BCL-2 e BCL-xL. Ao suprimir esses eixos antiapoptóticos chaves, o composto reativa os caminhos de morte celular programada intrínseca especificamente em linhagens celulares senescentes profundas de tecidos humanos, limpando o microambiente com eficiência celular cirúrgica.",
-        "pipeline": "Posicionado em janelas de validação clínica oncológica e pré-clínica avançada de extensão de saúde. O maior desafio disruptivo reside no controle dos efeitos colaterais severos periféricos, destacando-se a destruição induzida de plaquetas saudáveis (trombocitopenia aguda). Pesquisas atuais buscam o desenvolvimento de pró-fármacos galênicos ou anticorpos conjugados (ADCs) direcionados para blindar a integridade sanguínea.",
-        "medicamentos": "ABT-263 (Composto de Investigação Clínica).",
-    },
-    "fisetin": {
-        "aplicacao": "Polifenol flavonoide natural de alta especificidade senolítica, documentado por modular negativamente vias de sobrevivência celular dependentes de senescência, como as redes NF-kB. Exibe um dos maiores perfis de segurança biológica celular conhecidos, agindo de forma intermitente para reduzir a transcrição e liberação massiva do coquetel de citocinas citotóxicas e quimiocinas degradantes que compõem o ecossistema inflamatório SASP.",
-        "pipeline": "Fase II de estudos translacionais em humanos focados em inflamação crônica relacionada à senescência tecidual sistêmica. O composto esbarra em limitações estruturais de biodisponibilidade por sua hidrofobicidade nativa. Projetos de vanguarda biofarmacêutica priorizam a nanoencapsulação lipídica e veículos micelares estáveis para otimização farmacocinética in vivo.",
-        "medicamentos": "Formulações lipossomais de Longevidade, Protocolos Clínicos de Pulso.",
-    },
-    "resveratrol": {
-        "aplicacao": "Composto polifenólico atuante como modulador alostérico das Sirtuínas (especificamente SIRT1) e mimético de restrição calórica. Classificado classicamente como um agente 'senomorfo' de alta performance, ele não induz diretamente a lise celular, mas reprograma epigeneticamente o microambiente tecidual. Sua ação bloqueia a transcrição de citocinas pró-inflamatórias, quimiocinas e metaloproteinases da matriz celular (MMPs), contendo o efeito cascata que danifica células saudáveis vizinhas.",
-        "pipeline": "Uso comercial consolidado em escala global como nutracêutico protetor celular de barreira primária. Na triagem gerencial de pipelines clínicos estruturados, o composto enfrenta desafios severos relacionados à sua instabilidade termodinâmica in vivo e baixa solubilidade aquosa. Os esforços de pesquisa e desenvolvimento (P&D) atuais concentram-se na síntese de compostos ativadores de sirtuína sintéticos de segunda geração (STACs), desenhados para mimetizar seus benefícios com estabilidade metabólica ampliada.",
-        "medicamentos": "Trans-Resveratrol, Ativadores de Sirtuínas de Mercado.",
-    },
+    "Neurologia e Neuroproteção": {
+        "donepezil": {
+            "aplicacao": "Inibidor reversível da acetilcolinesterase (AChE). Aumenta a concentração cortical de acetilcolina, melhorando a neurotransmissão em tecidos afetados por demência progressiva.",
+            "pipeline": "Aprovado globalmente para estágios leves a graves da Doença de Alzheimer. Pipelines de P&D focam na redução de efeitos colaterais gastrointestinais periféricos.",
+            "classe": "Inibidor da AChE"
+        },
+        "memantine": {
+            "aplicacao": "Antagonista de ligação de baixa afinidade dos receptores NMDA de glutamato. Protege o sistema nervoso contra a excitotoxicidade induzida pelo excesso patológico de glutamato.",
+            "pipeline": "Consolidado na clínica farmacêutica. Pipelines de vanguarda buscam o desenvolvimento de formulações de liberação prolongada combinadas com outros agentes.",
+            "classe": "Antagonista NMDA"
+        }
+    }
 }
 
 
-def obter_dados_cientificos(nome_composto):
+def obter_dados_cientificos_v2(nome_composto, modulo_selecionado):
     nome_limpo = nome_composto.strip().lower()
-    for chave, dados in DADOS_AVANCADOS_SENOLITICOS.items():
+    base_modulo = BASE_CONHECIMENTO_GLOBAL.get(modulo_selecionado, {})
+    
+    for chave, dados in base_modulo.items():
         if chave in nome_limpo:
             return dados
+            
     return {
-        "aplicacao": f"O composto '{nome_composto.capitalize()}' encontra-se em estágio de triagem molecular primária. Mecanismos específicos de interação com as vias de sinalização pró-sobrevivência SCAP e regulação do fenótipo secretor inflamatório (SASP) estão sob investigação analítica in vitro na atual janela do pipeline.",
-        "pipeline": "Status de validação experimental inicial. Ensaios pré-clínicos de citotoxicidade seletiva e mapeamento farmacocinético preliminar agendados para consolidação de dados de bioequivalência e modelagem preditiva de segurança em sistemas humanos.",
-        "medicamentos": "Compostos análogos ou em fase de síntese laboratorial de triagem primária.",
+        "aplicacao": f"O composto '{nome_composto.capitalize()}' encontra-se em estágio de triagem molecular primária para a área de {modulo_selecionado}. Mecanismos de ação específicos estão sob investigação analítica.",
+        "pipeline": "Status de validação experimental inicial. Ensaios pré-clínicos e mapeamento farmacocinético preliminar agendados no pipeline corrente.",
+        "classe": "Triagem Primária"
     }
+
+
+def analisar_acao_reacao(peso_molecular, classe_terapeutica):
+    if peso_molecular > 500:
+        return "⚠️ Alerta de Reação: Risco de baixa biodisponibilidade por tamanho molecular avançado. Pode requerer veículos de entrega lipossomais."
+    
+    if "Inibidor" in classe_terapeutica:
+        return "🟢 Mecanismo Ativo: Alta afinidade enzimática detectada. Recomenda-se monitorar a saturação de receptores a longo prazo."
+        
+    if "Senolítico" in classe_terapeutica:
+        return "⚡ Mecanismo Ativo: Indução seletiva de apoptose celular. Requer protocolos de pulso intermitente para proteção de tecidos."
+        
+    if "Antagonista" in classe_terapeutica:
+        return "🧠 Modulação Ativa: Bloqueio balanceado de receptores neurais contra neurotoxicidade."
+        
+    return "🔍 Perfil farmacocinético padrão estável sob investigação in vitro."
 
 
 # --- GERADOR AUTOMÁTICO DO MODELO EXCEL ---
 if not os.path.exists("modelo_triagem_senotrack.xlsx"):
-    df_modelo = pd.DataFrame({"Composto": ["quercetin", "dasatinib", "navitoclax", "fisetin", "resveratrol"]})
+    df_modelo = pd.DataFrame({"Composto": ["quercetin", "dasatinib", "donepezil", "memantine", "resveratrol"]})
     df_modelo.to_excel("modelo_triagem_senotrack.xlsx", index=False)
 
 # Interface Principal
@@ -156,16 +185,24 @@ st.markdown("<p style='color: #10b981; font-weight: bold; margin-bottom: -10px;'
 st.title("🔬 Hub Avançado de Análise Oncológica e Longevidade Celular")
 st.markdown("---")
 
+# CONFIGURAÇÃO DE MÓDULOS NA BARRA LATERAL
+st.sidebar.markdown("### ⚙️ Configuração do Sistema")
+modulo_ativo = st.sidebar.selectbox(
+    "Selecione o Módulo de Análise:",
+    list(BASE_CONHECIMENTO_GLOBAL.keys())
+)
+st.sidebar.info(f"Módulo Ativo: **{modulo_ativo}**")
+
 aba_individual, aba_lote = st.tabs(["📊 Perfil Clínico e Terapêutico", "📁 Processamento de Lotes Hospitalares"])
 
 # =====================================================================
 # ABA 1: ANÁLISE INDIVIDUAL
 # =====================================================================
 with aba_individual:
-    composto_a = st.text_input("Digite o nome da molécula para análise (inglês):", placeholder="Ex: dasatinib, quercetin, navitoclax...")
+    composto_a = st.text_input("Digite o nome da molécula para análise (inglês):", placeholder="Ex: dasatinib, quercetin, donepezil...")
 
     if composto_a:
-        dados_locais = obter_dados_cientificos(composto_a)
+        dados_locais = obter_dados_cientificos_v2(composto_a, modulo_ativo)
 
         # REQUISIÇÃO DA API (PUBCHEM)
         url_dados = f"https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/name/{composto_a}/property/MolecularFormula,MolecularWeight,Title/JSON"
@@ -177,7 +214,6 @@ with aba_individual:
             formula = prop.get("MolecularFormula", "-")
             peso = prop.get("MolecularWeight", "-")
 
-            # --- INTERFACE ---
             st.markdown(f"## **{nome}**")
 
             c1, c2 = st.columns(2)
@@ -220,7 +256,6 @@ with aba_individual:
                 except Exception as e:
                     st.caption(f"⚠️ Renderizador 3D indisponível ({e})")
 
-            # --- GERAÇÃO DE PDF (ANÁLISE INDIVIDUAL) ---
             st.write("---")
             df_individual = pd.DataFrame([{
                 "Nome Oficial": nome,
@@ -244,8 +279,7 @@ with aba_individual:
 # ABA 2: PROCESSAMENTO DE LOTES HOSPITALARES
 # =====================================================================
 with aba_lote:
-    st.caption("Envie um arquivo .csv ou .xlsx com uma coluna contendo os nomes dos compostos (em inglês). "
-               "Você pode baixar o modelo abaixo como ponto de partida.")
+    st.caption("Envie um arquivo .csv ou .xlsx com uma coluna contendo os nomes dos compostos (em inglês).")
 
     with open("modelo_triagem_senotrack.xlsx", "rb") as f:
         st.download_button(
@@ -259,14 +293,12 @@ with aba_lote:
 
     if arquivo_upload:
         try:
-            # Lendo o arquivo corretamente (CSV ou Excel)
             if arquivo_upload.name.endswith(".csv"):
                 df_lote = pd.read_csv(arquivo_upload)
             else:
                 df_lote = pd.read_excel(arquivo_upload)
 
             if df_lote.shape[1] > 0:
-                # Padronizando o nome da primeira coluna para "Composto"
                 df_lote.rename(columns={df_lote.columns[0]: "Composto"}, inplace=True)
                 compostos_no_lote = [str(c).strip().lower() for c in df_lote["Composto"].unique()]
 
@@ -276,14 +308,19 @@ with aba_lote:
                 if "dasatinib" in compostos_no_lote and "quercetin" in compostos_no_lote:
                     st.success("""
                         ⚡ **Sinergia Oncológica/Senolítica Detectada: Combo D+Q (Dasatinib + Quercetina)**
-                        * **Mecanismo:** O Dasatinib elimina seletivamente os pré-adipócitos senescentes, enquanto a Quercetina elimina células endoteliais senescentes. Juntos, cobrem redes de sobrevivência complementares (SCAP), multiplicando a eficácia da depuração celular in vivo.
-                        * **Status Clínico:** Altamente referenciado em ensaios clínicos da Mayo Clinic para reversão de fragilidade biológica.
+                        * **Mecanismo:** O Dasatinib elimina seletivamente os pré-adipócitos senescentes, enquanto a Quercetina elimina células endoteliais senescentes. Juntos cobrem redes de sobrevivência complementares (SCAP).
+                    """)
+
+                if "donepezil" in compostos_no_lote and "memantine" in compostos_no_lote:
+                    st.success("""
+                        ⚡ **Sinergia Clínica Detectada: Protocolo Combinado de Alta Afinidade (Alzheimer Avançado)**
+                        * **Mecanismo:** O Donepezil maximiza a disponibilidade de acetilcolina na fenda sináptica, enquanto a Memantina regula a atividade do glutamato para evitar a neurotoxicidade.
                     """)
 
                 if "quercetin" in compostos_no_lote and "resveratrol" in compostos_no_lote:
                     st.info("""
                         🌱 **Sinergia Nutracêutica Protegida Detectada (Senolítico + Senomorfo)**
-                        * **Mecanismo:** A Quercetina atua forçando a apoptose das células em estado de senescência crônica. O Resveratrol entra como modulador alostérico (SIRT1), bloqueando o SASP (fenótipo inflamatório) para que as células saudáveis ao redor não sejam contaminadas pelo estresse oxidativo.
+                        * **Mecanismo:** A Quercetina força a apoptose das células senescentes, enquanto o Resveratrol modula as Sirtuínas bloqueando o avanço do perfil inflamatório (SASP).
                     """)
 
                 # --- B. ENGENHARIA DE DADOS E ENRIQUECIMENTO VIA API ---
@@ -299,42 +336,36 @@ with aba_lote:
 
                 for comp in df_lote["Composto"]:
                     nome_comp = str(comp).strip().lower()
+                    dados_c = obter_dados_cientificos_v2(nome_comp, modulo_active=modulo_ativo)
 
-                    dados_c = obter_dados_cientificos(nome_comp)
+                    # Reset padrão preventivo antes de chamar a API
+                    f_quimica, p_molecular = "-", 300.0
 
                     url = f"https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/name/{nome_comp}/property/MolecularFormula,MolecularWeight/JSON"
                     try:
                         res = requests.get(url, timeout=15)
-                    except requests.RequestException:
-                        res = None
-
-                    f_quimica, p_molecular = "-", 300.0
-                    if res is not None and res.status_code == 200:
-                        try:
+                        if res is not None and res.status_code == 200:
                             prop_b = res.json()["PropertyTable"]["Properties"][0]
                             f_quimica = prop_b.get("MolecularFormula", "-")
                             p_molecular = float(prop_b.get("MolecularWeight", 300.0))
-                        except Exception:
-                            pass
+                    except Exception:
+                        pass
 
+                    # Alocação estruturada pós-resposta da API
                     list_formulas.append(f_quimica)
                     list_pesos.append(f"{p_molecular} g/mol")
                     list_aplicacoes.append(dados_c["aplicacao"])
                     list_pipelines.append(dados_c["pipeline"])
 
-                    # Regra intuitiva de Absorção
+                    # Validação de absorção com base no peso real capturado
                     if p_molecular < 500:
                         list_absorcao.append("🟢 Alta (Peso < 500 g/mol)")
                     else:
                         list_absorcao.append("🟡 Moderada/Baixa (Molécula Grande)")
 
-                    # Regras de Segurança Laboratorial
-                    if "dasatinib" in nome_comp:
-                        list_seguranca.append("⚠️ Risco Moderado: Requer dosagem intermitente (Hit-and-Run)")
-                    elif "quercetin" in nome_comp or "resveratrol" in nome_comp or "fisetin" in nome_comp:
-                        list_seguranca.append("✅ Perfil Seguro: Baixa toxicidade sistêmica observada")
-                    else:
-                        list_seguranca.append("🔍 Fase de mapeamento de toxicidade in vitro")
+                    # Nova lógica de segurança/ação dinâmica por classe terapêutica
+                    resultado_reacao = analisar_acao_reacao(p_molecular, dados_c["classe"])
+                    list_seguranca.append(resultado_reacao)
 
                 status_loading.empty()
 
@@ -349,13 +380,10 @@ with aba_lote:
                     "Segurança Laboratorial": list_seguranca,
                 })
 
-                # =========================================================
-                # COMPARATIVO VISUAL 100% DINÂMICO (VÁRIOS ITENS)
-                # =========================================================
+                # --- C. COMPARATIVO VISUAL DINÂMICO ---
                 st.divider()
                 st.write("### ⚖️ Comparativo Direto de Eficiência (Visão Intuitiva)")
-                st.caption("Resumo simplificado para tomada de decisão rápida, ideal para triagem não técnica.")
-
+                
                 compostos_validos = df_exibicao.to_dict(orient="records")
 
                 if compostos_validos:
@@ -370,19 +398,25 @@ with aba_lote:
 
                         cor_borda = "#10b981"
                         icone = "🍏"
-                        funcao = "Ação Preventiva / Varredura Celular"
+                        funcao = "Ação Preventiva / Estabilização"
                         estrelas = "⭐⭐⭐⭐☆"
 
+                        # Customizações estéticas dinâmicas baseadas no nome
                         if "dasatinib" in nome_item.lower():
                             cor_borda = "#ef4444"
                             icone = "💥"
-                            funcao = "Ação Avançada (Precisão Clínica)"
+                            funcao = "Ação Avançada (Precisão)"
                             estrelas = "⭐⭐⭐⭐⭐"
                         elif "resveratrol" in nome_item.lower():
                             cor_borda = "#3b82f6"
                             icone = "🍇"
-                            funcao = "O Escudo (Bloqueio de Inflamação)"
+                            funcao = "O Escudo (Bloqueio inflamatório)"
                             estrelas = "⭐⭐⭐☆☆"
+                        elif "donepezil" in nome_item.lower() or "memantine" in nome_item.lower():
+                            cor_borda = "#a855f7"
+                            icone = "🧠"
+                            funcao = "Mecanismo Neuroprotetor"
+                            estrelas = "⭐⭐⭐⭐⭐"
 
                         with colunas_compostos[idx]:
                             st.markdown(f"""
@@ -391,17 +425,11 @@ with aba_lote:
                                 <p style='font-size:13px; margin-bottom:6px;'><b>Função:</b> {funcao}</p>
                                 <p style='font-size:13px; margin-bottom:6px;'><b>Força de Ação:</b> {estrelas}</p>
                                 <p style='font-size:13px; margin-bottom:6px;'><b>Foco Clínico:</b> {aplicacao}</p>
-                                <p style='font-size:13px; margin-bottom:0; color: {cor_borda};'><b>Segurança:</b> {seguranca}</p>
+                                <p style='font-size:13px; margin-bottom:0; color: {cor_borda};'><b>Status:</b> {seguranca}</p>
                             </div>
                             """, unsafe_allow_html=True)
 
-                    st.markdown("""
-                    <div style='background-color: #0f172a; padding: 15px; border-radius: 8px; margin-top: 15px; border: 1px dashed #475569;'>
-                        💡 <b>Diretriz Global de Triagem:</b> Esta visualização foi desenhada para facilitar análises rápidas. Itens marcados com 💥 representam intervenções críticas de pipeline, enquanto 🍏 e 🍇 representam estabilizadores metabólicos secundários.
-                    </div>
-                    """, unsafe_allow_html=True)
-
-                # --- C. RENDERIZAÇÃO DA TABELA GERENCIAL EM HTML ---
+                # --- D. RENDERIZAÇÃO DA TABELA GERENCIAL ---
                 st.divider()
                 st.write("### 📋 Tabela Gerencial Expandida de Triagem")
 
@@ -416,7 +444,7 @@ with aba_lote:
                 st.markdown(estilo_tabela, unsafe_allow_html=True)
                 st.markdown(df_exibicao.to_html(classes="tabela-lote", index=False, escape=False), unsafe_allow_html=True)
 
-                # --- D. GRÁFICO DE BARRAS ---
+                # --- E. GRÁFICO DE BARRAS ---
                 st.divider()
                 st.subheader("📈 Análise de Densidade Molecular do Lote")
 
@@ -424,7 +452,7 @@ with aba_lote:
                 df_grafico["Massa Numérica"] = df_grafico["Massa Molecular"].str.replace(" g/mol", "", regex=False).astype(float)
                 st.bar_chart(data=df_grafico, x="Nome Oficial", y="Massa Numérica", color="#10b981")
 
-                # --- E. GERADOR DE LAUDO PDF ---
+                # --- F. GERADOR DE LAUDO PDF ---
                 st.divider()
                 st.subheader("🖨️ Central de Emissão de Laudos Técnicos")
 
@@ -444,4 +472,4 @@ with aba_lote:
         except Exception as e:
             st.error(f"Erro ao processar lote: {e}")
 
-st.caption("SenoTrack Platform v3.5 • Tecnologia Estratégica Inovadora de Longevidade Celular.")
+st.caption("SenoTrack Platform v4.0 • Tecnologia Estratégica Inovadora de Mapeamento Molecular Modular.")
