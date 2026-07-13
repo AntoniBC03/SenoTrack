@@ -336,7 +336,7 @@ with aba_lote:
 
                 for comp in df_lote["Composto"]:
                     nome_comp = str(comp).strip().lower()
-                    dados_c = obter_dados_cientificos_v2(nome_comp, modulo_active=modulo_ativo)
+                    dados_c = obter_dados_cientificos_v2(nome_comp, modulo_selecionado=modulo_ativo)
 
                     # Reset padrão preventivo antes de chamar a API
                     f_quimica, p_molecular = "-", 300.0
