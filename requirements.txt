@@ -3,5 +3,5 @@ requests
 pandas
 openpyxl
 matplotlib
-fpdf
+fpdf2
 py3Dmol
