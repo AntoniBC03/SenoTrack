@@ -1,39 +1,64 @@
-# 🔬 SenoTrack Platform v3.0 — Plataforma Avançada de Triagem e Longevidade Celular
+🔬 SenoTrack Enterprise v7.0 — Plataforma Avançada de Triagem, Longevidade Celular e Agente de IA
+O SenoTrack Enterprise v7.0 é uma plataforma analítica e biomolecular de alta performance projetada para triagem de pipelines clínicos e processamento em lote de compostos senolíticos e senomorfos (focados em reversão da fragilidade biológica e senescência celular).
 
-O **SenoTrack v3.0** é uma plataforma analítica interativa projetada para a triagem de pipelines clínicos e processamento de lotes hospitalares, com foco na análise de compostos senolíticos e senomorfos (moléculas voltadas para a reversão da fragilidade biológica e rejuvenescimento celular através da eliminação de células senescentes).
+Nesta versão 7.0 Enterprise, a plataforma evoluiu para uma arquitetura resiliente e de alta disponibilidade, incorporando um Agente Clínico de IA Híbrida com Fallback Preditivo Local, renderização 3D em tempo real via WebGL e suporte para operação offline, garantindo continuidade operacional em ambientes clínicos isolados.
 
-Este projeto foi desenvolvido com foco em **acessibilidade e divulgação científica**. O objetivo é permitir que estudantes, pesquisadores e entusiastas da área de biologia e saúde explorem dados moleculares complexos, simulem interações medicamentosas e analisem sinergias biológicas de forma visual e intuitiva, eliminando barreiras técnicas e dispensando qualquer conhecimento em programação ou linhas de comando.
+🌐 Como Acessar a Plataforma
+A plataforma está pronta para uso em nuvem, não exigindo instalação local de dependências ou conhecimentos prévios em linha de comando:
 
----
+👉 CLIQUE AQUI PARA ACESSAR O SENOTRACK ONLINE
 
-## 🌐 Como Acessar a Plataforma (Pronto para Uso)
+(Ajuste a URL acima para o link final do seu projeto no Streamlit Cloud)
 
-Para utilizar o sistema, você não precisa instalar nenhum programa ou dependência no seu computador. A plataforma está hospedada em ambiente de produção na nuvem e pode ser acessada de qualquer navegador ou dispositivo móvel através do link oficial:
+🤖 O que há de novo na v7.0 Enterprise?
+🤖 Agente Clínico de IA Híbrido (Resiliência & Fallback):
 
-👉 **[CLIQUE AQUI PARA ACESSAR O SENOTRACK ONLINE](https://SEU_LINK_DO_STREAMLIT.streamlit.app)**  
-*(Nota: Substitua o link acima pela URL gerada pelo Streamlit após realizar o deploy)*
+Suporte a LLMs Externa: Aceita chaves de API para OpenAI e Google Gemini.
 
----
+Simulador Preditivo Local: Caso nenhuma chave de API seja fornecida ou haja falha de conexão, o sistema aciona automaticamente um modelo preditivo local sem quebrar a execução, gerando insights farmacológicos contextuais e garantindo zero downtime.
 
-## 🧪 Funcionalidades Principais do MVP
+🌐 Alta Disponibilidade & Operação Offline:
 
-1. **📊 Perfil Clínico e Terapêutico (Aba 1):** 
-   - Consulta molecular automatizada integrada à base internacional do **PubChem**.
-   - Exibição de fórmulas químicas, massa molecular e conformação estrutural (Visualizador 2D e Modelo 3D rotacionável/interativo).
-   - Diagnóstico detalhado sobre aplicações médicas profundas, mecanismos de ação nos eixos de sobrevivência celular (SCAP) e barreiras farmacêuticas atuais.
+Contingência local projetada para rodar sem dependência crítica de redes externas ou instabilidades na API do PubChem, permitindo o uso em ambiente de produção hospitalar/laboratorial.
 
-2. **📁 Processamento de Lotes Hospitalares (Aba 2):**
-   - **Motor de Regras Químicas:** Varredura inteligente de arquivos carregados (`.csv` ou `.xlsx`) para detecção automática de sinergias terapêuticas avançadas (como o Combo D+Q — *Dasatinib + Quercetina*).
-   - **Comparativo Direto de Eficiência:** Painel visual dinâmico em cartões paralelos para análise rápida de funções, força de ação, foco clínico e segurança laboratorial, adaptado para triagens gerenciais e tomadas de decisão rápidas.
-   - **Tabela Gerencial Expandida:** Compilação estruturada de dados com enriquecimento de informações via API em tempo real.
-   - **Análise Gráfica:** Gráfico automatizado de densidade molecular das amostras submetidas.
-   - **Central de Emissão de Laudos:** Geração automática e download de laudos clínicos executivos em formato **PDF**.
+🧬 Renderização Estereoscópica 2D e 3D:
 
----
+Integração com py3Dmol e WebGL para navegação, rotação e visualização interativa das conformações tridimensionais das moléculas.
 
-## 📂 Estrutura de Arquivos do Repositório
+📜 Rastreabilidade & Audit Trail (Audit-Ready):
 
-Para o correto funcionamento do servidor de hospedagem, o repositório mantém a seguinte estrutura básica:
-* `app.py` (ou nome do seu arquivo principal): Código fonte estruturado em Python e Streamlit.
-* `requirements.txt`: Arquivo de configuração contendo as dependências e bibliotecas necessárias para a compilação do servidor.
-* `modelo_triagem_senotrack.xlsx`: Planilha modelo de exemplo gerada dinamicamente pelo sistema para auxiliar o usuário no teste de triagem em lote.
+Sistema de auditoria com persistência em st.session_state e exportação de logs em JSON, atendendo a padrões rígidos de governança de dados.
+
+📄 Engine de Laudos em PDF Atualizada:
+
+Geração de laudos executivos em formato PDF (fpdf2) com gráficos em buffer de memória (Matplotlib), prontos para impressão e download imediato.
+
+🧪 Funcionalidades Principais
+📊 Perfil Clínico e Terapêutico Individual:
+
+Consulta automatizada REST integrada ao repositório público internacional do PubChem.
+
+Identificação de peso molecular, fórmula e conformação estrutural 2D e 3D.
+
+Diagnóstico de mecanismos de ação nos eixos de sobrevivência celular (SCAP), barreiras farmacêuticas e síntese preditiva via Agente de IA.
+
+📁 Processamento de Lotes Hospitalares:
+
+Motor de Regras Químicas & Lipinski: Filtragem automática de arquivos carregados (.csv ou .xlsx) avaliando critérios de biodisponibilidade e restrições farmacocinéticas.
+
+Detecção de Sinergias: Identificação de combos senolíticos avançados (ex: Dasatinib + Quercetina).
+
+Painel Comparativo: Exibição em cartões e gráficos automatizados de distribuição de massa molecular do lote.
+
+Emissão Executiva: Exportação automatizada de laudos analíticos completos em PDF.
+
+🛠️ Tech Stack & Arquitetura
+Linguagem & Framework: Python 3.10+ / Streamlit
+
+Dados & Analytics: Pandas, NumPy, OpenPyXL
+
+APIs & Conectividade: PubChem REST API, OpenAI API / Gemini API
+
+Visualização: Py3Dmol (WebGL), Matplotlib
+
+Documentos & Exportação: FPDF2 (PDF Engine), JSON (Audit Trail)
