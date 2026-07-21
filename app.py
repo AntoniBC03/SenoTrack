@@ -216,6 +216,16 @@ class PDFLaudoPremium(FPDF):
         self.set_text_color(120, 120, 120)
         self.cell(0, 10, f"Pagina {self.page_no()}", align="C")
 
+# --- SANITIZAÇÃO DE TEXTO PARA FPDF ---
+def sanitize_pdf_text(texto):
+    if texto is None:
+        return ""
+    # Remove caracteres incompatíveis com latin-1 sem quebrar a string
+    return str(texto).encode("latin-1", "replace").decode("latin-1")
+
+
+# --- GERADORES DE PDF CORRIGIDOS ---
+
 def gerar_pdf_laudo(df):
     pdf = PDFLaudoPremium()
     pdf.set_auto_page_break(auto=True, margin=20)
@@ -229,8 +239,8 @@ def gerar_pdf_laudo(df):
         pdf.multi_cell(0, 5, sanitize_pdf_text(f"Aplicacao: {row['Aplicação Médica']}"))
         pdf.ln(5)
     
-    out = pdf.output()
-    return bytes(out) if isinstance(out, (bytes, bytearray)) else out.encode("latin-1")
+    # Retorno limpo e seguro em bytes para o Streamlit
+    return bytes(pdf.output())
 
 
 def gerar_pdf_laudo_lote(df_exibicao, grafico_img_bytes):
@@ -242,7 +252,7 @@ def gerar_pdf_laudo_lote(df_exibicao, grafico_img_bytes):
     pdf.set_font("Helvetica", "B", 12)
     pdf.cell(0, 7, "1. Sumario Analitico da Triagem Filtrada em Lote", ln=True)
     pdf.set_font("Helvetica", "", 10)
-    pdf.cell(0, 5, f"Volume de compostos que atendem aos criterios de filtragem: {len(df_exibicao)} amostras.", ln=True)
+    pdf.cell(0, 5, sanitize_pdf_text(f"Volume de compostos que atendem aos criterios de filtragem: {len(df_exibicao)} amostras."), ln=True)
     pdf.ln(5)
 
     if grafico_img_bytes:
@@ -250,12 +260,11 @@ def gerar_pdf_laudo_lote(df_exibicao, grafico_img_bytes):
         pdf.cell(0, 7, "2. Perfil de Distribuicao de Massa Molecular do Lote", ln=True)
         pdf.ln(2)
         
-        # USA MEMÓRIA EM BEES EM VEZ DE CRIAR/REMOVER ARQUIVO NO DISCO
         try:
             grafico_stream = io.BytesIO(grafico_img_bytes)
-            pdf.image(grafico_stream, x=15, w=180, h=85, title="Grafico")
+            pdf.image(grafico_stream, x=15, w=180, h=85)
         except Exception as e:
-            logging.error(f"Erro ao inserir imagem no PDF: {e}")
+            logging.error(f"Erro ao inserir grafico no PDF: {e}")
         pdf.ln(5)
 
     pdf.add_page()
@@ -281,13 +290,8 @@ def gerar_pdf_laudo_lote(df_exibicao, grafico_img_bytes):
         pdf.multi_cell(0, 5, sanitize_pdf_text(f"    {row['Aplicação Médica']}"))
         pdf.ln(3)
 
-    # GARANTE QUE RETORNA UM BYTES VÁLIDO E NÃO NULO
-    pdf_output = pdf.output()
-    if isinstance(pdf_output, (bytes, bytearray)):
-        return bytes(pdf_output)
-    elif isinstance(pdf_output, str):
-        return pdf_output.encode("latin-1")
-    return pdf_output
+    # Retorno limpo e seguro em bytes para o Streamlit
+    return bytes(pdf.output())
 
 # --- GERADOR AUTOMÁTICO DA PLANILHA MODELO ---
 if not os.path.exists("modelo_triagem_v7.xlsx"):
