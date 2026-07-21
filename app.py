@@ -227,10 +227,8 @@ def gerar_pdf_laudo(df):
         pdf.multi_cell(0, 5, sanitize_pdf_text(f"Aplicacao: {row['Aplicação Médica']}"))
         pdf.ln(5)
     
-    # Método seguro via BytesIO
-    buffer = io.BytesIO()
-    pdf.output(buffer)
-    return buffer.getvalue()
+    # Retorna os bytes diretamente sem passar argumentos
+    return bytes(pdf.output())
 
 
 def gerar_pdf_laudo_lote(df_exibicao, grafico_img_bytes):
@@ -281,10 +279,8 @@ def gerar_pdf_laudo_lote(df_exibicao, grafico_img_bytes):
         pdf.multi_cell(0, 5, sanitize_pdf_text(f"    {row['Aplicação Médica']}"))
         pdf.ln(3)
 
-    # Método seguro via BytesIO
-    buffer = io.BytesIO()
-    pdf.output(buffer)
-    return buffer.getvalue()
+    # Retorna os bytes diretamente sem passar argumentos
+    return bytes(pdf.output())
 
 # --- GERADOR AUTOMÁTICO DA PLANILHA MODELO ---
 if not os.path.exists("modelo_triagem_v7.xlsx"):
