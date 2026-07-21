@@ -250,13 +250,13 @@ def gerar_pdf_laudo_lote(df_exibicao, grafico_img_bytes):
         pdf.cell(0, 7, "2. Perfil de Distribuicao de Massa Molecular do Lote", ln=True)
         pdf.ln(2)
         
-        with open("temp_chart_v7.png", "wb") as tmp_file:
-            tmp_file.write(grafico_img_bytes)
-        
-        pdf.image("temp_chart_v7.png", x=15, w=180, h=85)
+        # USA MEMÓRIA EM BEES EM VEZ DE CRIAR/REMOVER ARQUIVO NO DISCO
+        try:
+            grafico_stream = io.BytesIO(grafico_img_bytes)
+            pdf.image(grafico_stream, x=15, w=180, h=85, title="Grafico")
+        except Exception as e:
+            logging.error(f"Erro ao inserir imagem no PDF: {e}")
         pdf.ln(5)
-        if os.path.exists("temp_chart_v7.png"):
-            os.remove("temp_chart_v7.png")
 
     pdf.add_page()
     pdf.set_font("Helvetica", "B", 12)
@@ -281,8 +281,13 @@ def gerar_pdf_laudo_lote(df_exibicao, grafico_img_bytes):
         pdf.multi_cell(0, 5, sanitize_pdf_text(f"    {row['Aplicação Médica']}"))
         pdf.ln(3)
 
-    out = pdf.output()
-    return bytes(out) if isinstance(out, (bytes, bytearray)) else out.encode("latin-1")
+    # GARANTE QUE RETORNA UM BYTES VÁLIDO E NÃO NULO
+    pdf_output = pdf.output()
+    if isinstance(pdf_output, (bytes, bytearray)):
+        return bytes(pdf_output)
+    elif isinstance(pdf_output, str):
+        return pdf_output.encode("latin-1")
+    return pdf_output
 
 # --- GERADOR AUTOMÁTICO DA PLANILHA MODELO ---
 if not os.path.exists("modelo_triagem_v7.xlsx"):
