@@ -255,7 +255,7 @@ def gerar_pdf_laudo_lote(df_exibicao, grafico_img_bytes):
 
     if grafico_img_bytes:
         pdf.set_font("Helvetica", "B", 12)
-        pdf.cell(0, 7, "2. Perfil de Distribuicao de Massa Molecular do Lote", new_x="LMARGIN", new_y="NEXT")
+        pdf.cell(0, 7, "2. Perfil de Distribuicao de Massa Molecular do Lote", ln=True)
         pdf.ln(2)
         
         try:
