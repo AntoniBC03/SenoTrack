@@ -135,10 +135,12 @@ MOCK_PUBCHEM_DATA = {
     "tofacitinib": {"formula": "C16H20N6O", "weight": 312.38}
 }
 
+# --- SANITIZAÇÃO CORRIGIDA PARA STREAMLIT + FPDF2 ---
 def sanitize_pdf_text(texto):
     if texto is None:
         return ""
-    return str(texto).encode("latin-1", "ignore").decode("latin-1")
+    # Converte para string e substitui caracteres fora da tabela latin-1 por equivalente ou espaço
+    return str(texto).encode("latin-1", errors="replace").decode("latin-1")
 
 def analisar_acao_reacao(peso_molecular, classe_terapeutica):
     if peso_molecular > 500:
@@ -227,8 +229,8 @@ def gerar_pdf_laudo(df):
         pdf.multi_cell(0, 5, sanitize_pdf_text(f"Aplicacao: {row['Aplicação Médica']}"))
         pdf.ln(5)
     
-    # fpdf2 gera bytearray nativamente; bytes() garante a entrega binária ao Streamlit
-    return bytes(pdf.output())
+    out = pdf.output()
+    return bytes(out) if isinstance(out, (bytes, bytearray)) else out.encode("latin-1")
 
 
 def gerar_pdf_laudo_lote(df_exibicao, grafico_img_bytes):
@@ -279,8 +281,8 @@ def gerar_pdf_laudo_lote(df_exibicao, grafico_img_bytes):
         pdf.multi_cell(0, 5, sanitize_pdf_text(f"    {row['Aplicação Médica']}"))
         pdf.ln(3)
 
-    # fpdf2 gera bytearray nativamente; bytes() garante a entrega binária ao Streamlit
-    return bytes(pdf.output())
+    out = pdf.output()
+    return bytes(out) if isinstance(out, (bytes, bytearray)) else out.encode("latin-1")
 
 # --- GERADOR AUTOMÁTICO DA PLANILHA MODELO ---
 if not os.path.exists("modelo_triagem_v7.xlsx"):
@@ -363,7 +365,7 @@ with aba_individual:
             st.subheader("🎯 Pipeline de Eficiência Terapêutica Real")
             st.warning(dados_locais["pipeline"])
 
-            # NOVO: AGENTE CLÍNICO DE IA
+            # AGENTE CLÍNICO DE IA
             st.write("---")
             st.subheader("🤖 Agente Clínico de IA (Insight Automático)")
             st.markdown("Use o botão abaixo para invocar a rede neural que sintetiza a viabilidade deste composto.")
