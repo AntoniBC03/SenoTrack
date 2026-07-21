@@ -227,9 +227,11 @@ def gerar_pdf_laudo(df):
         pdf.multi_cell(0, 5, sanitize_pdf_text(f"Aplicacao: {row['Aplicação Médica']}"))
         pdf.ln(5)
     
-    # Compatibilidade com fpdf2 / FPDF
-    out = pdf.output()
-    return bytes(out) if isinstance(out, (bytearray, bytes)) else out.encode('latin1')
+    # Método seguro via BytesIO
+    buffer = io.BytesIO()
+    pdf.output(buffer)
+    return buffer.getvalue()
+
 
 def gerar_pdf_laudo_lote(df_exibicao, grafico_img_bytes):
     pdf = PDFLaudoPremium()
@@ -279,9 +281,10 @@ def gerar_pdf_laudo_lote(df_exibicao, grafico_img_bytes):
         pdf.multi_cell(0, 5, sanitize_pdf_text(f"    {row['Aplicação Médica']}"))
         pdf.ln(3)
 
-    # Compatibilidade com fpdf2 / FPDF
-    out = pdf.output()
-    return bytes(out) if isinstance(out, (bytearray, bytes)) else out.encode('latin1')
+    # Método seguro via BytesIO
+    buffer = io.BytesIO()
+    pdf.output(buffer)
+    return buffer.getvalue()
 
 # --- GERADOR AUTOMÁTICO DA PLANILHA MODELO ---
 if not os.path.exists("modelo_triagem_v7.xlsx"):
