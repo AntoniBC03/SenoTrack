@@ -217,15 +217,11 @@ class PDFLaudoPremium(FPDF):
         self.cell(0, 10, f"Pagina {self.page_no()}", align="C")
 
 # --- CONVERSÃO SEGURA DO PDF PARA BYTES ---
-# fpdf2 retorna um bytearray em pdf.output(); a versão clássica (PyFPDF) retorna uma string.
-# bytes(string) sem informar o encoding é o que causa o erro "string argument without an encoding".
-# Esta função funciona corretamente com as duas variantes da biblioteca.
 def to_pdf_bytes(pdf):
     saida = pdf.output()
     if isinstance(saida, str):
         return saida.encode("latin-1")
     return bytes(saida)
-
 
 # --- GERADORES DE PDF CORRIGIDOS ---
 
@@ -242,7 +238,6 @@ def gerar_pdf_laudo(df):
         pdf.multi_cell(0, 5, sanitize_pdf_text(f"Aplicacao: {row['Aplicação Médica']}"))
         pdf.ln(5)
     
-    # Retorno limpo e seguro em bytes para o Streamlit
     return to_pdf_bytes(pdf)
 
 
@@ -260,12 +255,16 @@ def gerar_pdf_laudo_lote(df_exibicao, grafico_img_bytes):
 
     if grafico_img_bytes:
         pdf.set_font("Helvetica", "B", 12)
-        pdf.cell(0, 7, "2. Perfil de Distribuicao de Massa Molecular do Lote", ln=True)
+        pdf.cell(0, 7, "2. Perfil de Distribuicao de Massa Molecular do Lote", new_x="LMARGIN", new_y="NEXT")
         pdf.ln(2)
         
         try:
+            # 1. Cria o fluxo de bytes
             grafico_stream = io.BytesIO(grafico_img_bytes)
-            pdf.image(grafico_stream, x=15, w=180, h=85)
+            # 2. ADICIONA NOME E TIPO EXPLÍCITOS PARA O FPDF2
+            grafico_stream.name = "chart.png"
+            
+            pdf.image(grafico_stream, x=15, w=180, h=85, type="PNG")
         except Exception as e:
             logging.error(f"Erro ao inserir grafico no PDF: {e}")
         pdf.ln(5)
@@ -293,7 +292,6 @@ def gerar_pdf_laudo_lote(df_exibicao, grafico_img_bytes):
         pdf.multi_cell(0, 5, sanitize_pdf_text(f"    {row['Aplicação Médica']}"))
         pdf.ln(3)
 
-    # Retorno limpo e seguro em bytes para o Streamlit
     return to_pdf_bytes(pdf)
 
 # --- GERADOR AUTOMÁTICO DA PLANILHA MODELO ---
@@ -332,7 +330,7 @@ if st.session_state.historico_auditoria:
     st.sidebar.download_button(
         label="📥 Exportar Histórico de Sessão (JSON)",
         data=json_historico,
-        file_name=f"auditoria_senotrack_{datetime.now().strftime('%Y%m%d')}.json",
+        file_name=f"auditoria_senotrack_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
         mime="application/json"
     )
 
@@ -419,10 +417,13 @@ with aba_individual:
 
             st.write("---")
             df_individual = pd.DataFrame([{"Nome Oficial": nome, "Aplicação Médica": dados_locais["aplicacao"]}])
+            
+            # NOME DO ARQUIVO SANITIZADO COM TIMESTAMPS
+            data_hora_str = datetime.now().strftime("%Y%m%d_%H%M%S")
             st.download_button(
                 label="📥 Baixar Laudo Individual (PDF)",
                 data=gerar_pdf_laudo(df_individual),
-                file_name=f"laudo_{composto_a}.pdf",
+                file_name=f"laudo_{composto_a}_{data_hora_str}.pdf",
                 mime="application/pdf",
             )
         else:
@@ -538,10 +539,15 @@ with aba_lote:
 
                     st.divider()
                     st.subheader("🖨️ Emissão de Relatório Executivo")
+                    
+                    # NOME DO ARQUIVO SANITIZADO COM TIMESTAMPS
+                    data_hora_str = datetime.now().strftime("%Y%m%d_%H%M%S")
+                    nome_pdf = f"laudo_triagem_filtrado_{data_hora_str}.pdf"
+                    
                     st.download_button(
                         label="📥 Baixar Laudo Clínico Executivo Completo (PDF)",
                         data=gerar_pdf_laudo_lote(df_visualizacao, grafico_bytes),
-                        file_name="laudo_triagem_filtrado_v7.pdf",
+                        file_name=nome_pdf,
                         mime="application/pdf",
                         type="primary"
                     )
