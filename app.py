@@ -216,12 +216,15 @@ class PDFLaudoPremium(FPDF):
         self.set_text_color(120, 120, 120)
         self.cell(0, 10, f"Pagina {self.page_no()}", align="C")
 
-# --- SANITIZAÇÃO DE TEXTO PARA FPDF ---
-def sanitize_pdf_text(texto):
-    if texto is None:
-        return ""
-    # Remove caracteres incompatíveis com latin-1 sem quebrar a string
-    return str(texto).encode("latin-1", "replace").decode("latin-1")
+# --- CONVERSÃO SEGURA DO PDF PARA BYTES ---
+# fpdf2 retorna um bytearray em pdf.output(); a versão clássica (PyFPDF) retorna uma string.
+# bytes(string) sem informar o encoding é o que causa o erro "string argument without an encoding".
+# Esta função funciona corretamente com as duas variantes da biblioteca.
+def to_pdf_bytes(pdf):
+    saida = pdf.output()
+    if isinstance(saida, str):
+        return saida.encode("latin-1")
+    return bytes(saida)
 
 
 # --- GERADORES DE PDF CORRIGIDOS ---
@@ -240,7 +243,7 @@ def gerar_pdf_laudo(df):
         pdf.ln(5)
     
     # Retorno limpo e seguro em bytes para o Streamlit
-    return bytes(pdf.output())
+    return to_pdf_bytes(pdf)
 
 
 def gerar_pdf_laudo_lote(df_exibicao, grafico_img_bytes):
@@ -291,7 +294,7 @@ def gerar_pdf_laudo_lote(df_exibicao, grafico_img_bytes):
         pdf.ln(3)
 
     # Retorno limpo e seguro em bytes para o Streamlit
-    return bytes(pdf.output())
+    return to_pdf_bytes(pdf)
 
 # --- GERADOR AUTOMÁTICO DA PLANILHA MODELO ---
 if not os.path.exists("modelo_triagem_v7.xlsx"):
