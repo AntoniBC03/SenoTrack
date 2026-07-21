@@ -227,11 +227,8 @@ def gerar_pdf_laudo(df):
         pdf.multi_cell(0, 5, sanitize_pdf_text(f"Aplicacao: {row['Aplicação Médica']}"))
         pdf.ln(5)
     
-    # Tratamento seguro para converter qualquer retorno do FPDF em bytes puros
-    out = pdf.output()
-    if isinstance(out, str):
-        return out.encode('latin1')
-    return bytes(out)
+    # fpdf2 gera bytearray nativamente; bytes() garante a entrega binária ao Streamlit
+    return bytes(pdf.output())
 
 
 def gerar_pdf_laudo_lote(df_exibicao, grafico_img_bytes):
@@ -282,11 +279,8 @@ def gerar_pdf_laudo_lote(df_exibicao, grafico_img_bytes):
         pdf.multi_cell(0, 5, sanitize_pdf_text(f"    {row['Aplicação Médica']}"))
         pdf.ln(3)
 
-    # Tratamento seguro para converter qualquer retorno do FPDF em bytes puros
-    out = pdf.output()
-    if isinstance(out, str):
-        return out.encode('latin1')
-    return bytes(out)
+    # fpdf2 gera bytearray nativamente; bytes() garante a entrega binária ao Streamlit
+    return bytes(pdf.output())
 
 # --- GERADOR AUTOMÁTICO DA PLANILHA MODELO ---
 if not os.path.exists("modelo_triagem_v7.xlsx"):
