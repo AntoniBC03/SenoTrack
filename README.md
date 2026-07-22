@@ -62,3 +62,6 @@ APIs & Conectividade: PubChem REST API, OpenAI API / Gemini API
 Visualização: Py3Dmol (WebGL), Matplotlib
 
 Documentos & Exportação: FPDF2 (PDF Engine), JSON (Audit Trail)
+
+Acesse o link abaixo para visualizar e utilizar a ferramenta:
+https://senotrack-y6vgbgo4d2evw3v7qsk5pq.streamlit.app
