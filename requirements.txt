@@ -1,7 +1,11 @@
 streamlit
-requests
-pandas
-openpyxl
-fpdf2==2.8.7
-py3Dmol
+rdkit
+plotly
 matplotlib
+fpdf2
+pandas
+numpy
+openpyxl
+py3Dmol
+stmol
+requests
