@@ -56,14 +56,14 @@ def icon_svg(nome, cor="#8b7cf6", tamanho=17):
 
 def sec_header(nome_icone, texto):
     st.markdown(
-        f"""<div style="display:flex;align-items:center;gap:10px;border-left:4px solid #8b7cf6;
-        padding:5px 0 5px 14px;margin:22px 0 12px;">{icon_svg(nome_icone)}
-        <span style="font-size:1.05rem;font-weight:700;color:#e8ecf5;letter-spacing:0.01em;">{texto}</span></div>""",
+        f"""<div style="display:flex;align-items:center;gap:10px;border-left:4px solid var(--accent-purple, #8b5cf6);
+        padding:5px 0 5px 14px;margin:22px 0 12px;">{icon_svg(nome_icone, cor="var(--accent-purple, #8b5cf6)")}
+        <span style="font-size:1.05rem;font-weight:700;color:var(--text-primary, #e8ecf5);letter-spacing:0.01em;">{texto}</span></div>""",
         unsafe_allow_html=True,
     )
 
 def sub_label(texto):
-    st.markdown(f"<div style='font-weight:600;color:#c3cadf;font-size:0.92rem;margin:6px 0 4px;'>{texto}</div>", unsafe_allow_html=True)
+    st.markdown(f"<div style='font-weight:600;color:var(--text-secondary, #6b7280);font-size:0.92rem;margin:6px 0 4px;'>{texto}</div>", unsafe_allow_html=True)
 
 # =====================================================================
 # I18N — IDIOMAS DISPONÍVEIS
@@ -286,6 +286,26 @@ TRANSLATIONS = {
     "col_lab_safety": {"pt": "Segurança Laboratorial", "en": "Laboratory Safety", "es": "Seguridad de Laboratorio", "zh": "实验室安全性", "de": "Laborsicherheit", "ja": "実験室安全性"},
     "col_pubmed_ref": {"pt": "Referência PubMed", "en": "PubMed Reference", "es": "Referencia PubMed", "zh": "PubMed 参考文献", "de": "PubMed-Referenz", "ja": "PubMed参照"},
     "col_rxnav_id": {"pt": "RxNav ID", "en": "RxNav ID", "es": "ID RxNav", "zh": "RxNav ID", "de": "RxNav-ID", "ja": "RxNav ID"},
+    "evid_lvl_meta": {"pt": "Nível I — Metanálise / Revisão Sistemática", "en": "Level I — Meta-Analysis / Systematic Review", "es": "Nivel I — Metanálisis / Revisión Sistemática", "zh": "I级 — 荟萃分析/系统综述", "de": "Stufe I — Metaanalyse / Systematische Übersicht", "ja": "レベルI — メタ分析／系統的レビュー"},
+    "evid_lvl_rct": {"pt": "Nível II — Ensaio Clínico Randomizado", "en": "Level II — Randomized Clinical Trial", "es": "Nivel II — Ensayo Clínico Aleatorizado", "zh": "II级 — 随机对照临床试验", "de": "Stufe II — Randomisierte klinische Studie", "ja": "レベルII — ランダム化比較臨床試験"},
+    "evid_lvl_cohort": {"pt": "Nível III — Estudo Observacional/Coorte", "en": "Level III — Observational/Cohort Study", "es": "Nivel III — Estudio Observacional/Cohorte", "zh": "III级 — 观察性/队列研究", "de": "Stufe III — Beobachtungs-/Kohortenstudie", "ja": "レベルIII — 観察研究／コホート研究"},
+    "evid_lvl_invitro": {"pt": "Nível IV — Estudo In Vitro / In Silico", "en": "Level IV — In Vitro / In Silico Study", "es": "Nivel IV — Estudio In Vitro / In Silico", "zh": "IV级 — 体外/计算机模拟研究", "de": "Stufe IV — In-vitro-/In-silico-Studie", "ja": "レベルIV — in vitro／in silico研究"},
+    "evid_lvl_invivo": {"pt": "Nível IV — Estudo Pré-Clínico In Vivo", "en": "Level IV — Preclinical In Vivo Study", "es": "Nivel IV — Estudio Preclínico In Vivo", "zh": "IV级 — 体内临床前研究", "de": "Stufe IV — Präklinische In-vivo-Studie", "ja": "レベルIV — in vivo前臨床研究"},
+    "evid_lvl_review": {"pt": "Nível V — Revisão Narrativa / Opinião", "en": "Level V — Narrative Review / Opinion", "es": "Nivel V — Revisión Narrativa / Opinión", "zh": "V级 — 叙述性综述/观点", "de": "Stufe V — Narrative Übersicht / Meinung", "ja": "レベルV — ナラティブレビュー／意見"},
+    "evid_lvl_primary": {"pt": "Nível III — Estudo Primário Não Classificado", "en": "Level III — Unclassified Primary Study", "es": "Nivel III — Estudio Primario No Clasificado", "zh": "III级 — 未分类原始研究", "de": "Stufe III — Nicht klassifizierte Primärstudie", "ja": "レベルIII — 未分類の一次研究"},
+    "evid_lvl_none": {"pt": "Indeterminado", "en": "Undetermined", "es": "Indeterminado", "zh": "无法确定", "de": "Unbestimmt", "ja": "不明"},
+    "conf_very_high": {"pt": "Muito Alto", "en": "Very High", "es": "Muy Alto", "zh": "极高", "de": "Sehr hoch", "ja": "非常に高い"},
+    "conf_high": {"pt": "Alto", "en": "High", "es": "Alto", "zh": "高", "de": "Hoch", "ja": "高い"},
+    "conf_moderate": {"pt": "Moderado", "en": "Moderate", "es": "Moderado", "zh": "中等", "de": "Mäßig", "ja": "中程度"},
+    "conf_moderate_low": {"pt": "Moderado-Baixo", "en": "Moderate-Low", "es": "Moderado-Bajo", "zh": "中低", "de": "Mäßig-Niedrig", "ja": "中〜低"},
+    "conf_low": {"pt": "Baixo", "en": "Low", "es": "Bajo", "zh": "低", "de": "Niedrig", "ja": "低い"},
+    "conf_na": {"pt": "N/A", "en": "N/A", "es": "N/A", "zh": "不适用", "de": "N/A", "ja": "該当なし"},
+    "ai_insight_external": {"pt": "Insight gerado via API externa: a análise profunda da estrutura molecular {formula} do {composto} indica forte potencial de ligação em receptores da área de {modulo}. O peso molecular de {peso} g/mol sugere que modificações lipídicas podem otimizar sua biodisponibilidade em 43%.", "en": "Insight generated via external API: in-depth analysis of the {formula} molecular structure of {composto} indicates strong binding potential with receptors in the {modulo} area. The molecular weight of {peso} g/mol suggests lipid modifications could optimize its bioavailability by 43%.", "es": "Perspectiva generada vía API externa: el análisis profundo de la estructura molecular {formula} de {composto} indica un fuerte potencial de unión con receptores del área de {modulo}. El peso molecular de {peso} g/mol sugiere que las modificaciones lipídicas podrían optimizar su biodisponibilidad en un 43%.", "zh": "通过外部API生成的洞察：对{composto}的分子结构{formula}进行深入分析表明，其与{modulo}领域受体具有较强的结合潜力。{peso} g/mol的分子量表明脂质修饰可将其生物利用度提高43%。", "de": "Über externe API generierte Erkenntnis: Die eingehende Analyse der Molekülstruktur {formula} von {composto} zeigt ein starkes Bindungspotenzial an Rezeptoren im Bereich {modulo}. Das Molekulargewicht von {peso} g/mol legt nahe, dass Lipidmodifikationen die Bioverfügbarkeit um 43% optimieren könnten.", "ja": "外部API経由で生成されたインサイト：{composto}の分子構造{formula}を詳細に分析した結果、{modulo}領域の受容体との強い結合可能性が示されました。分子量{peso} g/molは、脂質修飾によりバイオアベイラビリティを43%最適化できる可能性を示唆しています。"},
+    "ai_insight_local": {"pt": "IA local híbrida: o composto {composto} (fórmula: {formula}) foi escaneado em nossa base neural. Com base em seu peso molecular de {peso} g/mol, nossa IA prevê uma alta afinidade com alvos proteicos no eixo de {modulo}. Recomendamos modelagem molecular in silico (docking) para validar sua eficácia como agente terapêutico primário.", "en": "Local hybrid AI: the compound {composto} (formula: {formula}) was scanned in our neural database. Based on its molecular weight of {peso} g/mol, our AI predicts high affinity with protein targets in the {modulo} axis. We recommend in silico molecular modeling (docking) to validate its efficacy as a primary therapeutic agent.", "es": "IA local híbrida: el compuesto {composto} (fórmula: {formula}) fue escaneado en nuestra base neuronal. Según su peso molecular de {peso} g/mol, nuestra IA predice una alta afinidad con dianas proteicas en el eje de {modulo}. Recomendamos modelado molecular in silico (acoplamiento) para validar su eficacia como agente terapéutico primario.", "zh": "本地混合AI：化合物{composto}（分子式：{formula}）已在我们的神经网络数据库中扫描。根据其{peso} g/mol的分子量，我们的AI预测其与{modulo}方向的蛋白质靶点具有高亲和力。建议进行计算机模拟分子对接以验证其作为主要治疗药物的疗效。", "de": "Lokale Hybrid-KI: Die Verbindung {composto} (Formel: {formula}) wurde in unserer neuronalen Datenbank gescannt. Basierend auf ihrem Molekulargewicht von {peso} g/mol sagt unsere KI eine hohe Affinität zu Proteinzielen in der Achse {modulo} voraus. Wir empfehlen eine In-silico-Molekülmodellierung (Docking) zur Validierung ihrer Wirksamkeit als primärer therapeutischer Wirkstoff.", "ja": "ローカルハイブリッドAI：化合物{composto}（式：{formula}）は当社のニューラルデータベースでスキャンされました。{peso} g/molの分子量に基づき、当AIは{modulo}軸のタンパク質標的との高い親和性を予測します。主要な治療薬候補としての有効性を検証するため、インシリコ分子モデリング（ドッキング）を推奨します。"},
+    "benchmark_input_label": {"pt": "Digite as moléculas separadas por vírgula (ex: dasatinib, galantamine, rapamycin):", "en": "Enter the molecules separated by commas (e.g. dasatinib, galantamine, rapamycin):", "es": "Ingrese las moléculas separadas por comas (ej: dasatinib, galantamine, rapamycin):", "zh": "输入以逗号分隔的分子（例如：dasatinib, galantamine, rapamycin）：", "de": "Geben Sie die Moleküle durch Kommas getrennt ein (z. B. dasatinib, galantamine, rapamycin):", "ja": "分子をカンマ区切りで入力してください（例：dasatinib, galantamine, rapamycin）："},
+    "benchmark_input_help": {"pt": "Aceita qualquer composto disponível no PubChem, não apenas os pré-cadastrados. Até 6 moléculas por consulta.", "en": "Accepts any compound available on PubChem, not just the pre-registered ones. Up to 6 molecules per query.", "es": "Acepta cualquier compuesto disponible en PubChem, no solo los precargados. Hasta 6 moléculas por consulta.", "zh": "支持 PubChem 上的任意化合物，不限于预设列表。每次查询最多 6 个分子。", "de": "Akzeptiert jede in PubChem verfügbare Verbindung, nicht nur die vorregistrierten. Bis zu 6 Moleküle pro Abfrage.", "ja": "事前登録されたものに限らず、PubChemで利用可能な任意の化合物を受け付けます。1回のクエリで最大6分子まで。"},
+    "benchmark_too_many_warn": {"pt": "Mais de 6 moléculas foram digitadas; apenas as 6 primeiras serão processadas.", "en": "More than 6 molecules were entered; only the first 6 will be processed.", "es": "Se ingresaron más de 6 moléculas; solo se procesarán las primeras 6.", "zh": "输入的分子超过 6 个；仅处理前 6 个。", "de": "Es wurden mehr als 6 Moleküle eingegeben; nur die ersten 6 werden verarbeitet.", "ja": "6個を超える分子が入力されました。最初の6個のみ処理されます。"},
+    "benchmark_min_molecules_warn": {"pt": "Digite ao menos 2 moléculas válidas, separadas por vírgula.", "en": "Enter at least 2 valid molecules, separated by commas.", "es": "Ingrese al menos 2 moléculas válidas, separadas por comas.", "zh": "请至少输入 2 个有效分子，以逗号分隔。", "de": "Geben Sie mindestens 2 gültige Moleküle ein, durch Kommas getrennt.", "ja": "カンマ区切りで少なくとも2つの有効な分子を入力してください。"},
 }
 
 MODULE_TRANSLATIONS = {
@@ -324,32 +344,64 @@ CUSTOM_CSS = """
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap');
 
+    /*
+      DETECCAO DE TEMA: o Streamlit NAO expõe --background-color/--text-color como
+      variaveis CSS reais e utilizaveis por CSS customizado (isso e um equivoco comum).
+      Por isso a alternancia de tema aqui e feita via o atributo html[data-theme="dark|light"],
+      que e definido por um pequeno script (ver logo abaixo) que le a cor de fundo REAL
+      renderizada pelo Streamlit e aplica o atributo corretamente. Os blocos abaixo
+      definem paletas completas e fixas para cada um dos dois temas.
+    */
     :root {
+        /* valores padrao (usados so no instante antes do script rodar) */
         --bg-primary: #0a0e17;
         --bg-secondary: #0f1420;
         --bg-card: #131a2b;
         --bg-card-hover: #171f34;
         --border-subtle: #232c42;
-        --accent-blue: #4f7cff;
-        --accent-purple: #8b7cf6;
-        --accent-gradient: linear-gradient(135deg, #6f9bff 0%, #a78cf7 100%);
         --text-primary: #e8ecf5;
         --text-secondary: #8b95ad;
-        --text-on-accent: #12101d;
+        --accent-blue: #5b8bff;
+        --accent-purple: #8b5cf6;
+        --accent-gradient: linear-gradient(135deg, #6f9bff 0%, #a78cf7 100%);
+        --text-on-accent: #16132a;
         --success: #22c55e;
         --warning: #f5b942;
         --danger: #f0556b;
     }
 
-    html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
-
-    .stApp {
-        background: radial-gradient(circle at 10% 0%, #10152a 0%, var(--bg-primary) 45%) fixed;
-        color: var(--text-primary);
+    html[data-theme="dark"] {
+        --bg-primary: #0a0e17;
+        --bg-secondary: #0f1420;
+        --bg-card: #131a2b;
+        --bg-card-hover: #171f34;
+        --border-subtle: #232c42;
+        --text-primary: #e8ecf5;
+        --text-secondary: #8b95ad;
+        --success: #22c55e;
+        --warning: #f5b942;
+        --danger: #f0556b;
     }
 
+    html[data-theme="light"] {
+        --bg-primary: #ffffff;
+        --bg-secondary: #f2f4f8;
+        --bg-card: #f7f8fb;
+        --bg-card-hover: #ebeef5;
+        --border-subtle: #dde1ea;
+        --text-primary: #1c1f2b;
+        --text-secondary: #5b6172;
+        --success: #157a3d;
+        --warning: #9c6b06;
+        --danger: #c02c46;
+    }
+
+    html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
+
+    .stApp { background: var(--bg-primary); color: var(--text-primary); transition: background 0.15s ease, color 0.15s ease; }
+
     section[data-testid="stSidebar"] {
-        background: linear-gradient(180deg, #0c1120 0%, #0a0e17 100%);
+        background: var(--bg-secondary);
         border-right: 1px solid var(--border-subtle);
     }
     section[data-testid="stSidebar"] * { color: var(--text-primary) !important; }
@@ -366,17 +418,18 @@ CUSTOM_CSS = """
         border-radius: 14px;
         padding: 16px 18px;
         transition: all 0.25s ease;
-        box-shadow: 0 2px 10px rgba(0,0,0,0.25);
+        box-shadow: 0 2px 10px rgba(0,0,0,0.12);
     }
     div[data-testid="stMetric"]:hover {
         border-color: var(--accent-blue);
         transform: translateY(-2px);
-        box-shadow: 0 8px 24px rgba(79, 124, 255, 0.18);
+        box-shadow: 0 8px 24px rgba(91, 139, 255, 0.18);
     }
     div[data-testid="stMetricLabel"] { color: var(--text-secondary) !important; font-weight: 600; font-size: 0.78rem !important; text-transform: uppercase; letter-spacing: 0.04em;}
     div[data-testid="stMetricValue"] { color: var(--text-primary) !important; font-weight: 800 !important; font-family: 'JetBrains Mono', monospace !important;}
 
-    /* BOTOES — TEXTO ESCURO SOBRE GRADIENTE CLARO PARA ALTO CONTRASTE */
+    /* BOTOES — gradiente claro fixo com texto ESCURO fixo: contraste alto garantido
+       independentemente do tema (claro ou escuro) escolhido pelo usuario. */
     .stButton > button, .stDownloadButton > button, .stFormSubmitButton > button {
         background: var(--accent-gradient) !important;
         color: var(--text-on-accent) !important;
@@ -386,14 +439,15 @@ CUSTOM_CSS = """
         font-weight: 700 !important;
         letter-spacing: 0.01em;
         transition: all 0.2s ease !important;
-        box-shadow: 0 2px 12px rgba(79, 124, 255, 0.25);
+        box-shadow: 0 2px 12px rgba(91, 139, 255, 0.25);
     }
     .stButton > button *, .stDownloadButton > button *, .stFormSubmitButton > button * {
         color: var(--text-on-accent) !important;
+        fill: var(--text-on-accent) !important;
     }
     .stButton > button:hover, .stDownloadButton > button:hover, .stFormSubmitButton > button:hover {
         transform: translateY(-2px);
-        box-shadow: 0 8px 22px rgba(139, 124, 246, 0.45);
+        box-shadow: 0 8px 22px rgba(139, 92, 246, 0.4);
         filter: brightness(1.05);
     }
     .stButton > button:active, .stDownloadButton > button:active { transform: translateY(0px); }
@@ -406,7 +460,7 @@ CUSTOM_CSS = """
     }
     .stTextInput input:focus, .stTextArea textarea:focus {
         border-color: var(--accent-blue) !important;
-        box-shadow: 0 0 0 2px rgba(79, 124, 255, 0.25) !important;
+        box-shadow: 0 0 0 2px rgba(91, 139, 255, 0.25) !important;
     }
 
     .stTabs [data-baseweb="tab-list"] {
@@ -423,6 +477,7 @@ CUSTOM_CSS = """
         font-weight: 600;
         padding: 8px 16px;
     }
+    .stTabs [data-baseweb="tab"] p { color: inherit !important; }
     .stTabs [aria-selected="true"] {
         background: var(--accent-gradient) !important;
         color: var(--text-on-accent) !important;
@@ -438,11 +493,11 @@ CUSTOM_CSS = """
 
     div[data-testid="stAlert"] { border-radius: 12px; border: 1px solid var(--border-subtle); }
 
-    .tabela-v10 { width: 100%; border-collapse: collapse; margin-bottom: 20px; border-radius: 12px; overflow: hidden; font-size: 12px;}
-    .tabela-v10 th { background: var(--accent-gradient); color: var(--text-on-accent); padding: 12px 10px; text-align: left; font-weight: 700; }
-    .tabela-v10 td { padding: 10px; border-bottom: 1px solid var(--border-subtle); color: var(--text-primary); background-color: var(--bg-card);}
-    .tabela-v10 tr:nth-child(even) td { background-color: var(--bg-card-hover); }
-    .tabela-v10 tr:hover td { background-color: #1c2540; }
+    .tabela-v12 { width: 100%; border-collapse: collapse; margin-bottom: 20px; border-radius: 12px; overflow: hidden; font-size: 12px;}
+    .tabela-v12 th { background: var(--accent-gradient); color: var(--text-on-accent); padding: 12px 10px; text-align: left; font-weight: 700; }
+    .tabela-v12 td { padding: 10px; border-bottom: 1px solid var(--border-subtle); color: var(--text-primary); background-color: var(--bg-card);}
+    .tabela-v12 tr:nth-child(even) td { background-color: var(--bg-card-hover); }
+    .tabela-v12 tr:hover td { filter: brightness(1.08); }
 
     div[data-testid="stDataFrame"] { border: 1px solid var(--border-subtle); border-radius: 12px; overflow: hidden; }
 
@@ -458,6 +513,51 @@ CUSTOM_CSS = """
 </style>
 """
 st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
+
+# =====================================================================
+# DETECTOR DE TEMA (script real, não CSS var inexistente)
+# Roda dentro de um iframe (components.html), acessa window.parent.document
+# (mesma origem, permitido), lê a cor de fundo REAL que o Streamlit aplicou
+# ao container principal e escreve isso como html[data-theme="dark|light"].
+# Um MutationObserver + polling garante atualização mesmo em troca de tema
+# feita pelo usuário no menu nativo do Streamlit (que não dispara rerun Python).
+# =====================================================================
+components.html(
+    """
+    <script>
+    (function() {
+        function relativeLuminance(rgbString) {
+            var m = (rgbString || "").match(/[\\d.]+/g);
+            if (!m || m.length < 3) return 255;
+            var r = parseFloat(m[0]), g = parseFloat(m[1]), b = parseFloat(m[2]);
+            return 0.299 * r + 0.587 * g + 0.114 * b;
+        }
+        function applyTheme() {
+            try {
+                var doc = window.parent.document;
+                var target = doc.querySelector('[data-testid="stAppViewContainer"]') ||
+                             doc.querySelector('.stApp') || doc.body;
+                var bg = window.getComputedStyle(target).backgroundColor;
+                var lum = relativeLuminance(bg);
+                var theme = lum < 128 ? 'dark' : 'light';
+                if (doc.documentElement.getAttribute('data-theme') !== theme) {
+                    doc.documentElement.setAttribute('data-theme', theme);
+                }
+            } catch (e) { /* cross-origin ou DOM ainda nao pronto: ignora silenciosamente */ }
+        }
+        applyTheme();
+        try {
+            var obsTarget = window.parent.document.body;
+            var observer = new MutationObserver(applyTheme);
+            observer.observe(obsTarget, {attributes: true, attributeFilter: ['style', 'class']});
+            observer.observe(window.parent.document.documentElement, {attributes: true, attributeFilter: ['style', 'class']});
+        } catch (e) {}
+        setInterval(applyTheme, 1200);
+    })();
+    </script>
+    """,
+    height=0,
+)
 
 # --- ESTADO GLOBAL ---
 if "historico_auditoria" not in st.session_state:
@@ -598,9 +698,9 @@ def analisar_acao_reacao(peso_molecular, tag):
 def gerar_insight_ia(composto, formula, peso, modulo, api_key):
     time.sleep(1.2)
     if api_key:
-        return f"[Insight Gerado via API Externa]: A analise profunda da estrutura molecular {formula} do {composto} indica forte potencial de ligacao em receptores da area de {modulo}. O peso molecular de {peso} g/mol sugere que modificacoes lipidicas podem otimizar sua biodisponibilidade em 43%."
+        return t("ai_insight_external", composto=composto.capitalize(), formula=formula, peso=peso, modulo=modulo)
     else:
-        return f"[IA Local Hibrida]: O composto **{composto.capitalize()}** (Formula: {formula}) foi escaneado em nossa base neural. Com base em seu peso molecular de **{peso} g/mol**, nossa IA preve uma alta afinidade com alvos proteicos no eixo de **{modulo}**. Recomendamos modelagem molecular in silico (Docking) para validar sua eficacia como agente terapeutico primario."
+        return t("ai_insight_local", composto=composto.capitalize(), formula=formula, peso=peso, modulo=modulo)
 
 
 def gerar_moa_ia(composto, classe, descritores, modulo):
@@ -618,22 +718,22 @@ def gerar_moa_ia(composto, classe, descritores, modulo):
 
 def classificar_evidencia_ia(titulo_artigo, pmid_valido):
     if not titulo_artigo or not pmid_valido:
-        return {"nivel": "Indeterminado", "cor": "gray", "fator_confianca": "N/A"}
+        return {"nivel": t("evid_lvl_none"), "cor": "gray", "fator_confianca": t("conf_na")}
 
     titulo_lower = titulo_artigo.lower()
     if any(k in titulo_lower for k in ["meta-analysis", "systematic review"]):
-        return {"nivel": "Nível I — Metanálise / Revisão Sistemática", "cor": "green", "fator_confianca": "Muito Alto"}
+        return {"nivel": t("evid_lvl_meta"), "cor": "green", "fator_confianca": t("conf_very_high")}
     if any(k in titulo_lower for k in ["randomized", "clinical trial", "phase ii", "phase iii", "double-blind"]):
-        return {"nivel": "Nível II — Ensaio Clínico Randomizado", "cor": "green", "fator_confianca": "Alto"}
+        return {"nivel": t("evid_lvl_rct"), "cor": "green", "fator_confianca": t("conf_high")}
     if any(k in titulo_lower for k in ["cohort", "observational", "case-control"]):
-        return {"nivel": "Nível III — Estudo Observacional/Coorte", "cor": "orange", "fator_confianca": "Moderado"}
+        return {"nivel": t("evid_lvl_cohort"), "cor": "orange", "fator_confianca": t("conf_moderate")}
     if any(k in titulo_lower for k in ["in vitro", "cell line", "molecular docking", "in silico"]):
-        return {"nivel": "Nível IV — Estudo In Vitro / In Silico", "cor": "orange", "fator_confianca": "Moderado-Baixo"}
+        return {"nivel": t("evid_lvl_invitro"), "cor": "orange", "fator_confianca": t("conf_moderate_low")}
     if any(k in titulo_lower for k in ["mice", "rat", "animal model", "in vivo"]):
-        return {"nivel": "Nível IV — Estudo Pré-Clínico In Vivo", "cor": "orange", "fator_confianca": "Moderado"}
+        return {"nivel": t("evid_lvl_invivo"), "cor": "orange", "fator_confianca": t("conf_moderate")}
     if any(k in titulo_lower for k in ["review", "perspective", "opinion"]):
-        return {"nivel": "Nível V — Revisão Narrativa / Opinião", "cor": "gray", "fator_confianca": "Baixo"}
-    return {"nivel": "Nível III — Estudo Primário Não Classificado", "cor": "orange", "fator_confianca": "Moderado"}
+        return {"nivel": t("evid_lvl_review"), "cor": "gray", "fator_confianca": t("conf_low")}
+    return {"nivel": t("evid_lvl_primary"), "cor": "orange", "fator_confianca": t("conf_moderate")}
 
 
 def estimar_risco_herg(mol):
@@ -1254,16 +1354,16 @@ with aba_lote:
                         with colunas_cards[col_idx]:
                             pmid_txt = item['Referência PubMed']
                             if str(pmid_txt).strip():
-                                link_pubmed = f"<a href='https://pubmed.ncbi.nlm.nih.gov/{pmid_txt}/' target='_blank' style='color:#8b7cf6; font-weight:bold; text-decoration:underline;'>PubMed (PMID {pmid_txt})</a>"
+                                link_pubmed = f"<a href='https://pubmed.ncbi.nlm.nih.gov/{pmid_txt}/' target='_blank' style='color:var(--accent-purple, #8b5cf6); font-weight:bold; text-decoration:underline;'>PubMed (PMID {pmid_txt})</a>"
                             else:
-                                link_pubmed = f"<span style='color:#8b95ad;'>{t('pubmed_not_found')}</span>"
+                                link_pubmed = f"<span style='color:var(--text-secondary);'>{t('pubmed_not_found')}</span>"
                             st.markdown(f"""
-                            <div style='background-color: #131a2b; padding: 18px; border-radius: 12px; border-left: 4px solid #8b7cf6; margin-bottom:15px; min-height: 220px; border: 1px solid #232c42;'>
-                                <h4 style='margin-top:0; color:#e8ecf5; font-size:16px;'>{item['Nome Oficial']}</h4>
-                                <p style='font-size:13px; margin-bottom:6px; color:#cbd5e1;'><b>{t('metric_formula')}:</b> {item['Fórmula']} | <b>{t('metric_mass')}:</b> {item['Massa Molecular']}</p>
-                                <p style='font-size:12px; margin-bottom:8px; color:#a78cf7;'><b>{t('rxnav_found_template', id=item['RxNav ID']) if item['RxNav ID'] else t('rxnav_no_data')}</b></p>
-                                <p style='font-size:12px; margin-bottom:10px; color:#8b95ad; line-height: 1.4;'>{item['Aplicação Médica']}</p>
-                                <hr style='border: 0.5px solid #232c42; margin: 8px 0;'>
+                            <div style='background-color: var(--bg-card); padding: 18px; border-radius: 12px; border-left: 4px solid var(--accent-purple, #8b5cf6); margin-bottom:15px; min-height: 220px; border-top: 1px solid var(--border-subtle); border-right: 1px solid var(--border-subtle); border-bottom: 1px solid var(--border-subtle);'>
+                                <h4 style='margin-top:0; color:var(--text-primary); font-size:16px;'>{item['Nome Oficial']}</h4>
+                                <p style='font-size:13px; margin-bottom:6px; color:var(--text-primary);'><b>{t('metric_formula')}:</b> {item['Fórmula']} | <b>{t('metric_mass')}:</b> {item['Massa Molecular']}</p>
+                                <p style='font-size:12px; margin-bottom:8px; color:var(--accent-purple, #8b5cf6);'><b>{t('rxnav_found_template', id=item['RxNav ID']) if item['RxNav ID'] else t('rxnav_no_data')}</b></p>
+                                <p style='font-size:12px; margin-bottom:10px; color:var(--text-secondary); line-height: 1.4;'>{item['Aplicação Médica']}</p>
+                                <hr style='border: 0.5px solid var(--border-subtle); margin: 8px 0;'>
                                 <p style='font-size:12px; margin-bottom:0;'>{link_pubmed}</p>
                             </div>
                             """, unsafe_allow_html=True)
@@ -1288,7 +1388,7 @@ with aba_lote:
                 sec_header("database", t("master_table_title"))
                 df_visualizacao = df_filtrado.drop(columns=["Massa Numérica"]) if not df_filtrado.empty else df_filtrado
                 df_display = renomear_colunas_display(df_visualizacao)
-                st.markdown(df_display.to_html(classes="tabela-v10", index=False, escape=False), unsafe_allow_html=True)
+                st.markdown(df_display.to_html(classes="tabela-v12", index=False, escape=False), unsafe_allow_html=True)
 
                 if not df_filtrado.empty:
                     st.divider()
@@ -1296,13 +1396,13 @@ with aba_lote:
                     st.bar_chart(data=df_filtrado, x="Nome Oficial", y="Massa Numérica", color="#8b7cf6")
 
                     fig, ax = plt.subplots(figsize=(7, 3.5))
-                    fig.patch.set_facecolor('#0f1420')
-                    ax.set_facecolor('#0f1420')
-                    ax.bar(df_filtrado["Nome Oficial"], df_filtrado["Massa Numérica"], color="#8b7cf6", width=0.4)
-                    ax.set_ylabel("Massa Molecular (g/mol)", fontsize=9, color="#e8ecf5")
-                    ax.tick_params(axis='both', labelsize=8, colors="#e8ecf5")
+                    fig.patch.set_facecolor('#ffffff')
+                    ax.set_facecolor('#ffffff')
+                    ax.bar(df_filtrado["Nome Oficial"], df_filtrado["Massa Numérica"], color="#8b5cf6", width=0.4)
+                    ax.set_ylabel("Massa Molecular (g/mol)", fontsize=9, color="#262730")
+                    ax.tick_params(axis='both', labelsize=8, colors="#262730")
                     for spine in ax.spines.values():
-                        spine.set_color('#232c42')
+                        spine.set_color('#d0d3db')
                     plt.tight_layout()
                     buf = io.BytesIO()
                     plt.savefig(buf, format='png', dpi=200, facecolor=fig.get_facecolor())
@@ -1480,12 +1580,19 @@ with aba_docking:
 with aba_benchmark:
     st.caption(t("benchmark_caption"))
     sec_header("bar-chart", t("molecule_select_section"))
-    lista_compostos_conhecidos = sorted(set(MOCK_PUBCHEM_DATA.keys()))
-    compostos_selecionados = st.multiselect(
-        t("molecule_select_label"), options=lista_compostos_conhecidos,
-        default=[FARMACO_CONTROLE_POR_MODULO.get(modulo_ativo, lista_compostos_conhecidos[0]), lista_compostos_conhecidos[0]][:2],
-        max_selections=4,
+    farmaco_sugerido = FARMACO_CONTROLE_POR_MODULO.get(modulo_ativo, "dasatinib")
+    texto_compostos = st.text_input(
+        t("benchmark_input_label"),
+        value=f"{farmaco_sugerido}, quercetin",
+        help=t("benchmark_input_help"),
+        key="input_benchmark_freeform",
     )
+    compostos_selecionados = [c.strip() for c in texto_compostos.split(",") if c.strip()]
+    # remove duplicatas preservando a ordem de digitação
+    compostos_selecionados = list(dict.fromkeys(compostos_selecionados))
+    if len(compostos_selecionados) > 6:
+        st.warning(t("benchmark_too_many_warn"))
+        compostos_selecionados = compostos_selecionados[:6]
 
     if len(compostos_selecionados) >= 2:
         perfis = {}
@@ -1549,14 +1656,14 @@ with aba_benchmark:
                     name=nome_c.capitalize() + (" ★" if nome_c == farmaco_controle else "")
                 ))
             fig_radar.update_layout(
-                polar=dict(bgcolor="#131a2b", radialaxis=dict(visible=True, range=[0, 100], gridcolor="#232c42", color="#8b95ad")),
-                paper_bgcolor="rgba(0,0,0,0)", font=dict(color="#e8ecf5"), showlegend=True,
+                polar=dict(bgcolor="rgba(0,0,0,0)", radialaxis=dict(visible=True, range=[0, 100], gridcolor="rgba(128,128,128,0.35)")),
+                paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", showlegend=True,
             )
-            st.plotly_chart(fig_radar, use_container_width=True)
+            st.plotly_chart(fig_radar, use_container_width=True, theme="streamlit")
         else:
             st.warning(t("benchmark_invalid_smiles_warn"))
     else:
-        st.info(t("benchmark_select_warn"))
+        st.info(t("benchmark_min_molecules_warn"))
 
 # =====================================================================
 # ABA 6 — AGENTE CLÍNICO & LITERATURA
