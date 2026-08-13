@@ -338,226 +338,26 @@ def modulo_nome(modulo_pt):
 
 
 # =====================================================================
-# CSS CUSTOMIZADO — TEMA DARK EXECUTIVO (CONTRASTE CORRIGIDO)
+# CSS CENTRALIZADO (style.css) — acompanha o tema nativo do Streamlit
+# (Light / Dark / System) via var(--background-color),
+# var(--secondary-background-color) e var(--text-color). Sem paletas
+# fixas e sem detecção de tema via JS: o próprio Streamlit atualiza
+# essas variáveis automaticamente quando o usuário troca de tema no
+# menu nativo (⋮ → Settings), sem precisar de rerun em Python.
 # =====================================================================
-CUSTOM_CSS = """
-<style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap');
+def load_css(caminho: str = "style.css") -> None:
+    """Lê o arquivo de estilo externo e injeta seu conteúdo na aplicação."""
+    try:
+        with open(caminho, encoding="utf-8") as f:
+            css = f.read()
+        st.markdown(f"<style>{css}</style>", unsafe_allow_html=True)
+    except FileNotFoundError:
+        logging.warning(
+            "Arquivo de estilo '%s' não encontrado; seguindo com o tema padrão do Streamlit.",
+            caminho,
+        )
 
-    /*
-      DETECCAO DE TEMA: o Streamlit NAO expõe --background-color/--text-color como
-      variaveis CSS reais e utilizaveis por CSS customizado (isso e um equivoco comum).
-      Por isso a alternancia de tema aqui e feita via o atributo html[data-theme="dark|light"],
-      que e definido por um pequeno script (ver logo abaixo) que le a cor de fundo REAL
-      renderizada pelo Streamlit e aplica o atributo corretamente. Os blocos abaixo
-      definem paletas completas e fixas para cada um dos dois temas.
-    */
-    :root {
-        /* valores padrao (usados so no instante antes do script rodar) */
-        --bg-primary: #0a0e17;
-        --bg-secondary: #0f1420;
-        --bg-card: #131a2b;
-        --bg-card-hover: #171f34;
-        --border-subtle: #232c42;
-        --text-primary: #e8ecf5;
-        --text-secondary: #8b95ad;
-        --accent-blue: #5b8bff;
-        --accent-purple: #8b5cf6;
-        --accent-gradient: linear-gradient(135deg, #6f9bff 0%, #a78cf7 100%);
-        --text-on-accent: #16132a;
-        --success: #22c55e;
-        --warning: #f5b942;
-        --danger: #f0556b;
-    }
-
-    html[data-theme="dark"] {
-        --bg-primary: #0a0e17;
-        --bg-secondary: #0f1420;
-        --bg-card: #131a2b;
-        --bg-card-hover: #171f34;
-        --border-subtle: #232c42;
-        --text-primary: #e8ecf5;
-        --text-secondary: #8b95ad;
-        --success: #22c55e;
-        --warning: #f5b942;
-        --danger: #f0556b;
-    }
-
-    html[data-theme="light"] {
-        --bg-primary: #ffffff;
-        --bg-secondary: #f2f4f8;
-        --bg-card: #f7f8fb;
-        --bg-card-hover: #ebeef5;
-        --border-subtle: #dde1ea;
-        --text-primary: #1c1f2b;
-        --text-secondary: #5b6172;
-        --success: #157a3d;
-        --warning: #9c6b06;
-        --danger: #c02c46;
-    }
-
-    html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
-
-    .stApp { background: var(--bg-primary); color: var(--text-primary); transition: background 0.15s ease, color 0.15s ease; }
-
-    section[data-testid="stSidebar"] {
-        background: var(--bg-secondary);
-        border-right: 1px solid var(--border-subtle);
-    }
-    section[data-testid="stSidebar"] * { color: var(--text-primary) !important; }
-
-    h1, h2, h3, h4 { font-family: 'Inter', sans-serif !important; letter-spacing: -0.02em; color: var(--text-primary) !important; }
-    h1 { font-weight: 800 !important; }
-    h2, h3 { font-weight: 700 !important; }
-
-    p, span, label, .stMarkdown, .stCaption { color: var(--text-secondary); }
-
-    div[data-testid="stMetric"] {
-        background: var(--bg-card);
-        border: 1px solid var(--border-subtle);
-        border-radius: 14px;
-        padding: 16px 18px;
-        transition: all 0.25s ease;
-        box-shadow: 0 2px 10px rgba(0,0,0,0.12);
-    }
-    div[data-testid="stMetric"]:hover {
-        border-color: var(--accent-blue);
-        transform: translateY(-2px);
-        box-shadow: 0 8px 24px rgba(91, 139, 255, 0.18);
-    }
-    div[data-testid="stMetricLabel"] { color: var(--text-secondary) !important; font-weight: 600; font-size: 0.78rem !important; text-transform: uppercase; letter-spacing: 0.04em;}
-    div[data-testid="stMetricValue"] { color: var(--text-primary) !important; font-weight: 800 !important; font-family: 'JetBrains Mono', monospace !important;}
-
-    /* BOTOES — gradiente claro fixo com texto ESCURO fixo: contraste alto garantido
-       independentemente do tema (claro ou escuro) escolhido pelo usuario. */
-    .stButton > button, .stDownloadButton > button, .stFormSubmitButton > button {
-        background: var(--accent-gradient) !important;
-        color: var(--text-on-accent) !important;
-        border: none !important;
-        border-radius: 10px !important;
-        padding: 0.55rem 1.3rem !important;
-        font-weight: 700 !important;
-        letter-spacing: 0.01em;
-        transition: all 0.2s ease !important;
-        box-shadow: 0 2px 12px rgba(91, 139, 255, 0.25);
-    }
-    .stButton > button *, .stDownloadButton > button *, .stFormSubmitButton > button * {
-        color: var(--text-on-accent) !important;
-        fill: var(--text-on-accent) !important;
-    }
-    .stButton > button:hover, .stDownloadButton > button:hover, .stFormSubmitButton > button:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 8px 22px rgba(139, 92, 246, 0.4);
-        filter: brightness(1.05);
-    }
-    .stButton > button:active, .stDownloadButton > button:active { transform: translateY(0px); }
-
-    .stTextInput input, .stTextArea textarea, .stNumberInput input, .stSelectbox > div > div, div[data-baseweb="select"] > div {
-        background-color: var(--bg-card) !important;
-        border: 1px solid var(--border-subtle) !important;
-        border-radius: 10px !important;
-        color: var(--text-primary) !important;
-    }
-    .stTextInput input:focus, .stTextArea textarea:focus {
-        border-color: var(--accent-blue) !important;
-        box-shadow: 0 0 0 2px rgba(91, 139, 255, 0.25) !important;
-    }
-
-    .stTabs [data-baseweb="tab-list"] {
-        gap: 4px;
-        background-color: var(--bg-secondary);
-        padding: 6px;
-        border-radius: 12px;
-        border: 1px solid var(--border-subtle);
-    }
-    .stTabs [data-baseweb="tab"] {
-        background-color: transparent;
-        border-radius: 8px;
-        color: var(--text-secondary);
-        font-weight: 600;
-        padding: 8px 16px;
-    }
-    .stTabs [data-baseweb="tab"] p { color: inherit !important; }
-    .stTabs [aria-selected="true"] {
-        background: var(--accent-gradient) !important;
-        color: var(--text-on-accent) !important;
-    }
-    .stTabs [aria-selected="true"] p { color: var(--text-on-accent) !important; }
-
-    .streamlit-expanderHeader, div[data-testid="stExpander"] {
-        background-color: var(--bg-card) !important;
-        border: 1px solid var(--border-subtle) !important;
-        border-radius: 12px !important;
-        color: var(--text-primary) !important;
-    }
-
-    div[data-testid="stAlert"] { border-radius: 12px; border: 1px solid var(--border-subtle); }
-
-    .tabela-v12 { width: 100%; border-collapse: collapse; margin-bottom: 20px; border-radius: 12px; overflow: hidden; font-size: 12px;}
-    .tabela-v12 th { background: var(--accent-gradient); color: var(--text-on-accent); padding: 12px 10px; text-align: left; font-weight: 700; }
-    .tabela-v12 td { padding: 10px; border-bottom: 1px solid var(--border-subtle); color: var(--text-primary); background-color: var(--bg-card);}
-    .tabela-v12 tr:nth-child(even) td { background-color: var(--bg-card-hover); }
-    .tabela-v12 tr:hover td { filter: brightness(1.08); }
-
-    div[data-testid="stDataFrame"] { border: 1px solid var(--border-subtle); border-radius: 12px; overflow: hidden; }
-
-    div[data-testid="stSlider"] [role="slider"] { background-color: var(--accent-purple) !important; }
-    div[data-testid="stToggle"] label div[data-checked="true"] { background-color: var(--accent-blue) !important; }
-
-    ::-webkit-scrollbar { width: 8px; height: 8px; }
-    ::-webkit-scrollbar-track { background: var(--bg-primary); }
-    ::-webkit-scrollbar-thumb { background: var(--border-subtle); border-radius: 8px; }
-    ::-webkit-scrollbar-thumb:hover { background: var(--accent-blue); }
-
-    hr { border-color: var(--border-subtle) !important; }
-</style>
-"""
-st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
-
-# =====================================================================
-# DETECTOR DE TEMA (script real, não CSS var inexistente)
-# Roda dentro de um iframe (components.html), acessa window.parent.document
-# (mesma origem, permitido), lê a cor de fundo REAL que o Streamlit aplicou
-# ao container principal e escreve isso como html[data-theme="dark|light"].
-# Um MutationObserver + polling garante atualização mesmo em troca de tema
-# feita pelo usuário no menu nativo do Streamlit (que não dispara rerun Python).
-# =====================================================================
-components.html(
-    """
-    <script>
-    (function() {
-        function relativeLuminance(rgbString) {
-            var m = (rgbString || "").match(/[\\d.]+/g);
-            if (!m || m.length < 3) return 255;
-            var r = parseFloat(m[0]), g = parseFloat(m[1]), b = parseFloat(m[2]);
-            return 0.299 * r + 0.587 * g + 0.114 * b;
-        }
-        function applyTheme() {
-            try {
-                var doc = window.parent.document;
-                var target = doc.querySelector('[data-testid="stAppViewContainer"]') ||
-                             doc.querySelector('.stApp') || doc.body;
-                var bg = window.getComputedStyle(target).backgroundColor;
-                var lum = relativeLuminance(bg);
-                var theme = lum < 128 ? 'dark' : 'light';
-                if (doc.documentElement.getAttribute('data-theme') !== theme) {
-                    doc.documentElement.setAttribute('data-theme', theme);
-                }
-            } catch (e) { /* cross-origin ou DOM ainda nao pronto: ignora silenciosamente */ }
-        }
-        applyTheme();
-        try {
-            var obsTarget = window.parent.document.body;
-            var observer = new MutationObserver(applyTheme);
-            observer.observe(obsTarget, {attributes: true, attributeFilter: ['style', 'class']});
-            observer.observe(window.parent.document.documentElement, {attributes: true, attributeFilter: ['style', 'class']});
-        } catch (e) {}
-        setInterval(applyTheme, 1200);
-    })();
-    </script>
-    """,
-    height=0,
-)
+load_css()
 
 # --- ESTADO GLOBAL ---
 if "historico_auditoria" not in st.session_state:
@@ -1111,7 +911,7 @@ escolha_idioma = st.sidebar.selectbox(
 st.session_state.idioma_ativo = IDIOMAS_DISPONIVEIS[escolha_idioma]
 IDIOMA_ATUAL = st.session_state.idioma_ativo
 
-st.markdown(f"<p style='color: #8b7cf6; font-weight: 700; margin-bottom: -10px; letter-spacing: 0.03em; font-size:0.8rem;'>{t('app_badge')}</p>", unsafe_allow_html=True)
+st.markdown(f"<p style='color: var(--accent-purple, #8b7cf6); font-weight: 700; margin-bottom: -10px; letter-spacing: 0.03em; font-size:0.8rem;'>{t('app_badge')}</p>", unsafe_allow_html=True)
 st.title(t("app_title"))
 st.markdown("---")
 

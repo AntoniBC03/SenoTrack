@@ -1,0 +1,237 @@
+/* =====================================================================
+   SENOTRACK — FOLHA DE ESTILO CENTRALIZADA
+   =====================================================================
+   Esta folha NÃO fixa cores de fundo/texto. Todo o contraste segue as
+   variáveis nativas que o próprio Streamlit injeta em tempo real de
+   acordo com o tema ativo (Light / Dark / System):
+
+       --background-color            → fundo da tela principal
+       --secondary-background-color  → fundo da sidebar, cards, inputs
+       --text-color                  → cor de texto/rótulos
+       --primary-color               → cor de destaque definida em config.toml
+
+   Como essas variáveis são atualizadas pelo próprio Streamlit sempre que
+   o usuário troca de tema no menu nativo (⋮ → Settings), NÃO é preciso
+   nenhum script para detectar tema, nem paletas fixas por tema.
+   ===================================================================== */
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap');
+
+:root {
+    /* --- Aliases semânticos usados no resto do app (Python e CSS) ---
+       Todos derivam das variáveis nativas do Streamlit, então acompanham
+       o tema automaticamente, sem hardcode. */
+    --bg-primary: var(--background-color);
+    --bg-secondary: var(--secondary-background-color);
+    --bg-card: var(--secondary-background-color);
+    --bg-card-hover: color-mix(in srgb, var(--secondary-background-color) 85%, var(--text-color) 15%);
+    --border-subtle: color-mix(in srgb, var(--text-color) 18%, transparent);
+
+    --text-primary: var(--text-color);
+    --text-secondary: color-mix(in srgb, var(--text-color) 65%, transparent);
+
+    /* --- Cores de marca (intencionalmente fixas, não dependem do tema) --- */
+    --accent-blue: #5b8bff;
+    --accent-purple: #8b5cf6;
+    --accent-gradient: linear-gradient(135deg, #6f9bff 0%, #a78cf7 100%);
+    --text-on-accent: #16132a; /* texto escuro fixo sobre o gradiente claro, para contraste garantido nos dois temas */
+    --success: #22c55e;
+    --warning: #f5b942;
+    --danger: #f0556b;
+}
+
+html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
+
+/* =====================================================================
+   TELA PRINCIPAL
+   ===================================================================== */
+.stApp {
+    background-color: var(--background-color);
+    color: var(--text-color);
+    transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+/* =====================================================================
+   SIDEBAR
+   ===================================================================== */
+section[data-testid="stSidebar"] {
+    background-color: var(--secondary-background-color);
+    border-right: 1px solid var(--border-subtle);
+}
+section[data-testid="stSidebar"] * {
+    color: var(--text-color) !important;
+}
+
+/* =====================================================================
+   TIPOGRAFIA
+   ===================================================================== */
+h1, h2, h3, h4 {
+    font-family: 'Inter', sans-serif !important;
+    letter-spacing: -0.02em;
+    color: var(--text-color) !important;
+}
+h1 { font-weight: 800 !important; }
+h2, h3 { font-weight: 700 !important; }
+
+p, span, label, .stMarkdown, .stCaption { color: var(--text-secondary); }
+
+/* =====================================================================
+   MÉTRICAS (st.metric)
+   ===================================================================== */
+div[data-testid="stMetric"] {
+    background-color: var(--bg-card);
+    border: 1px solid var(--border-subtle);
+    border-radius: 14px;
+    padding: 16px 18px;
+    transition: all 0.25s ease;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.12);
+}
+div[data-testid="stMetric"]:hover {
+    border-color: var(--accent-blue);
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px rgba(91, 139, 255, 0.18);
+}
+div[data-testid="stMetricLabel"] {
+    color: var(--text-secondary) !important;
+    font-weight: 600;
+    font-size: 0.78rem !important;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+div[data-testid="stMetricValue"] {
+    color: var(--text-color) !important;
+    font-weight: 800 !important;
+    font-family: 'JetBrains Mono', monospace !important;
+}
+
+/* =====================================================================
+   BOTÕES — gradiente de marca fixo com texto escuro fixo: contraste alto
+   garantido independentemente do tema (claro ou escuro) escolhido.
+   ===================================================================== */
+.stButton > button, .stDownloadButton > button, .stFormSubmitButton > button {
+    background: var(--accent-gradient) !important;
+    color: var(--text-on-accent) !important;
+    border: none !important;
+    border-radius: 10px !important;
+    padding: 0.55rem 1.3rem !important;
+    font-weight: 700 !important;
+    letter-spacing: 0.01em;
+    transition: all 0.2s ease !important;
+    box-shadow: 0 2px 12px rgba(91, 139, 255, 0.25);
+}
+.stButton > button *, .stDownloadButton > button *, .stFormSubmitButton > button * {
+    color: var(--text-on-accent) !important;
+    fill: var(--text-on-accent) !important;
+}
+.stButton > button:hover, .stDownloadButton > button:hover, .stFormSubmitButton > button:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 22px rgba(139, 92, 246, 0.4);
+    filter: brightness(1.05);
+}
+.stButton > button:active, .stDownloadButton > button:active { transform: translateY(0px); }
+
+/* =====================================================================
+   INPUTS — texto, seleção, número
+   ===================================================================== */
+.stTextInput input,
+.stTextArea textarea,
+.stNumberInput input,
+.stSelectbox > div > div,
+div[data-baseweb="select"] > div {
+    background-color: var(--secondary-background-color) !important;
+    border: 1px solid var(--border-subtle) !important;
+    border-radius: 10px !important;
+    color: var(--text-color) !important;
+}
+.stTextInput input:focus, .stTextArea textarea:focus {
+    border-color: var(--accent-blue) !important;
+    box-shadow: 0 0 0 2px rgba(91, 139, 255, 0.25) !important;
+}
+
+/* =====================================================================
+   ABAS (st.tabs)
+   ===================================================================== */
+.stTabs [data-baseweb="tab-list"] {
+    gap: 4px;
+    background-color: var(--secondary-background-color);
+    padding: 6px;
+    border-radius: 12px;
+    border: 1px solid var(--border-subtle);
+}
+.stTabs [data-baseweb="tab"] {
+    background-color: transparent;
+    border-radius: 8px;
+    color: var(--text-secondary);
+    font-weight: 600;
+    padding: 8px 16px;
+}
+.stTabs [data-baseweb="tab"] p { color: inherit !important; }
+.stTabs [aria-selected="true"] {
+    background: var(--accent-gradient) !important;
+    color: var(--text-on-accent) !important;
+}
+.stTabs [aria-selected="true"] p { color: var(--text-on-accent) !important; }
+
+/* =====================================================================
+   EXPANDER / ALERTAS
+   ===================================================================== */
+.streamlit-expanderHeader, div[data-testid="stExpander"] {
+    background-color: var(--bg-card) !important;
+    border: 1px solid var(--border-subtle) !important;
+    border-radius: 12px !important;
+    color: var(--text-color) !important;
+}
+
+div[data-testid="stAlert"] {
+    border-radius: 12px;
+    border: 1px solid var(--border-subtle);
+}
+
+/* =====================================================================
+   TABELAS CUSTOMIZADAS (.tabela-v12)
+   ===================================================================== */
+.tabela-v12 {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 20px;
+    border-radius: 12px;
+    overflow: hidden;
+    font-size: 12px;
+}
+.tabela-v12 th {
+    background: var(--accent-gradient);
+    color: var(--text-on-accent);
+    padding: 12px 10px;
+    text-align: left;
+    font-weight: 700;
+}
+.tabela-v12 td {
+    padding: 10px;
+    border-bottom: 1px solid var(--border-subtle);
+    color: var(--text-color);
+    background-color: var(--bg-card);
+}
+.tabela-v12 tr:nth-child(even) td { background-color: var(--bg-card-hover); }
+.tabela-v12 tr:hover td { filter: brightness(1.08); }
+
+div[data-testid="stDataFrame"] {
+    border: 1px solid var(--border-subtle);
+    border-radius: 12px;
+    overflow: hidden;
+}
+
+/* =====================================================================
+   SLIDER / TOGGLE
+   ===================================================================== */
+div[data-testid="stSlider"] [role="slider"] { background-color: var(--accent-purple) !important; }
+div[data-testid="stToggle"] label div[data-checked="true"] { background-color: var(--accent-blue) !important; }
+
+/* =====================================================================
+   SCROLLBAR
+   ===================================================================== */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background-color: var(--background-color); }
+::-webkit-scrollbar-thumb { background-color: var(--border-subtle); border-radius: 8px; }
+::-webkit-scrollbar-thumb:hover { background-color: var(--accent-blue); }
+
+hr { border-color: var(--border-subtle) !important; }
