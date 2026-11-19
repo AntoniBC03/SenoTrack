@@ -1,33 +1,53 @@
 import streamlit as st
 import streamlit.components.v1 as components
 import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 import pandas as pd
-import numpy as np
-import os
-import logging
-import io
-import json
-import time
-import uuid
+import os, io, re, json, uuid, html, inspect, logging, threading
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
+from urllib.parse import quote
+
+import matplotlib
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from fpdf import FPDF
 import py3Dmol
 import plotly.graph_objects as go
 
-from rdkit import Chem
-from rdkit.Chem import Draw, Descriptors, Crippen, rdMolDescriptors, AllChem
+from rdkit import Chem, RDLogger
+from rdkit.Chem import Descriptors, Crippen, rdMolDescriptors, AllChem
+from rdkit.Chem.Draw import rdMolDraw2D
 from rdkit.Chem.FilterCatalog import FilterCatalog, FilterCatalogParams
 
+try:
+    from streamlit.runtime.scriptrunner import add_script_run_ctx, get_script_run_ctx
+except Exception:
+    add_script_run_ctx = get_script_run_ctx = None
+
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+RDLogger.DisableLog("rdApp.*")
 st.set_page_config(page_title="SenoTrack Enterprise v10.0", page_icon="◆", layout="wide")
 
-# =====================================================================
-# CONSTANTES INTERNAS (SENTINELAS NEUTRAS DE IDIOMA — usadas só em lógica)
-# =====================================================================
-PUBMED_NOT_FOUND = "__PUBMED_NOT_FOUND__"
-RXNAV_NOT_FOUND = "__RXNAV_NOT_FOUND__"
-BATCH_ERROR_SENTINEL = "__BATCH_ERROR__"
+MAX_LOTE = 200
+MAX_PDB_BYTES = 25 * 1024 * 1024
+MAX_PDB_ATOMS_SURFACE = 20000
+HERG_SCORE_MAX = 6
+PDB_ID_RE = re.compile(r"^[0-9][A-Za-z0-9]{3}$")
+MIME_XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+
+def _stretch(fn):
+    """Compat entre versões do Streamlit (use_container_width -> width='stretch')."""
+    try:
+        if "use_container_width" in inspect.signature(fn).parameters:
+            return {"use_container_width": True}
+    except (TypeError, ValueError):
+        pass
+    return {"width": "stretch"}
+
+W_IMG, W_DF, W_PLOT = _stretch(st.image), _stretch(st.dataframe), _stretch(st.plotly_chart)
 
 # =====================================================================
 # ÍCONES CORPORATIVOS (SVG estilo Lucide, minimalistas, sem emojis)
@@ -51,8 +71,8 @@ ICON_PATHS = {
 def icon_svg(nome, cor="#8b7cf6", tamanho=17):
     caminho = ICON_PATHS.get(nome, ICON_PATHS["activity"])
     return (f'<svg xmlns="http://www.w3.org/2000/svg" width="{tamanho}" height="{tamanho}" viewBox="0 0 24 24" '
-            f'fill="none" stroke="{cor}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" '
-            f'style="vertical-align:middle;flex-shrink:0;">{caminho}</svg>')
+            f'fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" '
+            f'style="stroke:{cor};vertical-align:middle;flex-shrink:0;">{caminho}</svg>')
 
 def sec_header(nome_icone, texto):
     st.markdown(
@@ -150,9 +170,6 @@ TRANSLATIONS = {
     "btn_generate_batch_ai": {"pt": "Gerar Parecer Clínico do Lote por IA", "en": "Generate AI Clinical Opinion for the Batch", "es": "Generar Dictamen Clínico del Lote por IA", "zh": "生成AI批次临床意见", "de": "KI-Klinisches Gutachten für den Batch generieren", "ja": "AIによるバッチ臨床所見を生成"},
     "batch_ai_report_title": {"pt": "Parecer Geral da IA para o Lote", "en": "General AI Opinion for the Batch", "es": "Dictamen General de IA para el Lote", "zh": "AI批次总体意见", "de": "Allgemeines KI-Gutachten für den Batch", "ja": "AIによるバッチ全体所見"},
     "batch_ai_analyzed": {"pt": "Foram analisadas {n} moléculas no módulo {modulo}: {nomes}.", "en": "{n} molecules were analyzed in the {modulo} module: {nomes}.", "es": "Se analizaron {n} moléculas en el módulo {modulo}: {nomes}.", "zh": "已在 {modulo} 模块中分析了 {n} 个分子：{nomes}。", "de": "Es wurden {n} Moleküle im Modul {modulo} analysiert: {nomes}.", "ja": "{modulo}モジュールで{n}個の分子を分析しました：{nomes}。"},
-    "batch_ai_coherence": {"pt": "Coerência Terapêutica: a combinação de compostos apresenta alta compatibilidade com o ecossistema de {modulo}.", "en": "Therapeutic Coherence: the compound combination shows high compatibility with the {modulo} ecosystem.", "es": "Coherencia Terapéutica: la combinación de compuestos presenta alta compatibilidad con el ecosistema de {modulo}.", "zh": "治疗一致性：该化合物组合与 {modulo} 生态系统具有高度兼容性。", "de": "Therapeutische Kohärenz: Die Verbindungskombination zeigt hohe Kompatibilität mit dem Ökosystem {modulo}.", "ja": "治療的一貫性：この化合物の組み合わせは{modulo}エコシステムと高い互換性を示しています。"},
-    "batch_ai_pk": {"pt": "Perfil Farmacocinético: a distribuição de massa molecular média está equilibrada. {n} dos compostos possuem publicações diretas no PubMed de alto impacto.", "en": "Pharmacokinetic Profile: the average molecular mass distribution is balanced. {n} of the compounds have direct high-impact PubMed publications.", "es": "Perfil Farmacocinético: la distribución de masa molecular promedio está equilibrada. {n} de los compuestos tienen publicaciones directas de alto impacto en PubMed.", "zh": "药代动力学概况：平均分子量分布均衡。其中 {n} 个化合物拥有直接的高影响力 PubMed 文献。", "de": "Pharmakokinetisches Profil: Die durchschnittliche Molekülmassenverteilung ist ausgewogen. {n} der Verbindungen verfügen über direkte, wirkungsstarke PubMed-Publikationen.", "ja": "薬物動態プロファイル：平均分子量分布はバランスが取れています。{n}件の化合物に直接的な高インパクトPubMed論文があります。"},
-    "batch_ai_recommendation": {"pt": "Recomendação: aprovado para prosseguimento de testes in silico e alocação em matrizes de triagem clínica hospitalar.", "en": "Recommendation: approved to proceed with in silico testing and allocation in hospital clinical screening matrices.", "es": "Recomendación: aprobado para continuar con pruebas in silico y asignación en matrices de cribado clínico hospitalario.", "zh": "建议：批准进行计算机模拟测试，并纳入医院临床筛选矩阵。", "de": "Empfehlung: Freigegeben für die Fortsetzung von In-silico-Tests und Zuordnung zu klinischen Krankenhaus-Screening-Matrizen.", "ja": "推奨事項：インシリコ試験の継続および病院臨床スクリーニングマトリックスへの組み入れを承認。"},
     "matrix_section": {"pt": "Matriz Comparativa e Evidências Biomoleculares", "en": "Comparative Matrix & Biomolecular Evidence", "es": "Matriz Comparativa y Evidencias Biomoleculares", "zh": "比较矩阵与生物分子证据", "de": "Vergleichsmatrix & biomolekulare Evidenz", "ja": "比較マトリックスと生体分子エビデンス"},
     "detail_section": {"pt": "Inspeção Detalhada por Composto da Planilha", "en": "Detailed Inspection per Spreadsheet Compound", "es": "Inspección Detallada por Compuesto de la Hoja", "zh": "表格中各化合物的详细检查", "de": "Detaillierte Prüfung je Tabellenverbindung", "ja": "スプレッドシート内化合物の詳細検査"},
     "master_table_title": {"pt": "Tabela Mestra do Lote", "en": "Batch Master Table", "es": "Tabla Maestra del Lote", "zh": "批次主表", "de": "Batch-Übersichtstabelle", "ja": "バッチマスターテーブル"},
@@ -300,13 +317,79 @@ TRANSLATIONS = {
     "conf_moderate_low": {"pt": "Moderado-Baixo", "en": "Moderate-Low", "es": "Moderado-Bajo", "zh": "中低", "de": "Mäßig-Niedrig", "ja": "中〜低"},
     "conf_low": {"pt": "Baixo", "en": "Low", "es": "Bajo", "zh": "低", "de": "Niedrig", "ja": "低い"},
     "conf_na": {"pt": "N/A", "en": "N/A", "es": "N/A", "zh": "不适用", "de": "N/A", "ja": "該当なし"},
-    "ai_insight_external": {"pt": "Insight gerado via API externa: a análise profunda da estrutura molecular {formula} do {composto} indica forte potencial de ligação em receptores da área de {modulo}. O peso molecular de {peso} g/mol sugere que modificações lipídicas podem otimizar sua biodisponibilidade em 43%.", "en": "Insight generated via external API: in-depth analysis of the {formula} molecular structure of {composto} indicates strong binding potential with receptors in the {modulo} area. The molecular weight of {peso} g/mol suggests lipid modifications could optimize its bioavailability by 43%.", "es": "Perspectiva generada vía API externa: el análisis profundo de la estructura molecular {formula} de {composto} indica un fuerte potencial de unión con receptores del área de {modulo}. El peso molecular de {peso} g/mol sugiere que las modificaciones lipídicas podrían optimizar su biodisponibilidad en un 43%.", "zh": "通过外部API生成的洞察：对{composto}的分子结构{formula}进行深入分析表明，其与{modulo}领域受体具有较强的结合潜力。{peso} g/mol的分子量表明脂质修饰可将其生物利用度提高43%。", "de": "Über externe API generierte Erkenntnis: Die eingehende Analyse der Molekülstruktur {formula} von {composto} zeigt ein starkes Bindungspotenzial an Rezeptoren im Bereich {modulo}. Das Molekulargewicht von {peso} g/mol legt nahe, dass Lipidmodifikationen die Bioverfügbarkeit um 43% optimieren könnten.", "ja": "外部API経由で生成されたインサイト：{composto}の分子構造{formula}を詳細に分析した結果、{modulo}領域の受容体との強い結合可能性が示されました。分子量{peso} g/molは、脂質修飾によりバイオアベイラビリティを43%最適化できる可能性を示唆しています。"},
-    "ai_insight_local": {"pt": "IA local híbrida: o composto {composto} (fórmula: {formula}) foi escaneado em nossa base neural. Com base em seu peso molecular de {peso} g/mol, nossa IA prevê uma alta afinidade com alvos proteicos no eixo de {modulo}. Recomendamos modelagem molecular in silico (docking) para validar sua eficácia como agente terapêutico primário.", "en": "Local hybrid AI: the compound {composto} (formula: {formula}) was scanned in our neural database. Based on its molecular weight of {peso} g/mol, our AI predicts high affinity with protein targets in the {modulo} axis. We recommend in silico molecular modeling (docking) to validate its efficacy as a primary therapeutic agent.", "es": "IA local híbrida: el compuesto {composto} (fórmula: {formula}) fue escaneado en nuestra base neuronal. Según su peso molecular de {peso} g/mol, nuestra IA predice una alta afinidad con dianas proteicas en el eje de {modulo}. Recomendamos modelado molecular in silico (acoplamiento) para validar su eficacia como agente terapéutico primario.", "zh": "本地混合AI：化合物{composto}（分子式：{formula}）已在我们的神经网络数据库中扫描。根据其{peso} g/mol的分子量，我们的AI预测其与{modulo}方向的蛋白质靶点具有高亲和力。建议进行计算机模拟分子对接以验证其作为主要治疗药物的疗效。", "de": "Lokale Hybrid-KI: Die Verbindung {composto} (Formel: {formula}) wurde in unserer neuronalen Datenbank gescannt. Basierend auf ihrem Molekulargewicht von {peso} g/mol sagt unsere KI eine hohe Affinität zu Proteinzielen in der Achse {modulo} voraus. Wir empfehlen eine In-silico-Molekülmodellierung (Docking) zur Validierung ihrer Wirksamkeit als primärer therapeutischer Wirkstoff.", "ja": "ローカルハイブリッドAI：化合物{composto}（式：{formula}）は当社のニューラルデータベースでスキャンされました。{peso} g/molの分子量に基づき、当AIは{modulo}軸のタンパク質標的との高い親和性を予測します。主要な治療薬候補としての有効性を検証するため、インシリコ分子モデリング（ドッキング）を推奨します。"},
     "benchmark_input_label": {"pt": "Digite as moléculas separadas por vírgula (ex: dasatinib, galantamine, rapamycin):", "en": "Enter the molecules separated by commas (e.g. dasatinib, galantamine, rapamycin):", "es": "Ingrese las moléculas separadas por comas (ej: dasatinib, galantamine, rapamycin):", "zh": "输入以逗号分隔的分子（例如：dasatinib, galantamine, rapamycin）：", "de": "Geben Sie die Moleküle durch Kommas getrennt ein (z. B. dasatinib, galantamine, rapamycin):", "ja": "分子をカンマ区切りで入力してください（例：dasatinib, galantamine, rapamycin）："},
     "benchmark_input_help": {"pt": "Aceita qualquer composto disponível no PubChem, não apenas os pré-cadastrados. Até 6 moléculas por consulta.", "en": "Accepts any compound available on PubChem, not just the pre-registered ones. Up to 6 molecules per query.", "es": "Acepta cualquier compuesto disponible en PubChem, no solo los precargados. Hasta 6 moléculas por consulta.", "zh": "支持 PubChem 上的任意化合物，不限于预设列表。每次查询最多 6 个分子。", "de": "Akzeptiert jede in PubChem verfügbare Verbindung, nicht nur die vorregistrierten. Bis zu 6 Moleküle pro Abfrage.", "ja": "事前登録されたものに限らず、PubChemで利用可能な任意の化合物を受け付けます。1回のクエリで最大6分子まで。"},
     "benchmark_too_many_warn": {"pt": "Mais de 6 moléculas foram digitadas; apenas as 6 primeiras serão processadas.", "en": "More than 6 molecules were entered; only the first 6 will be processed.", "es": "Se ingresaron más de 6 moléculas; solo se procesarán las primeras 6.", "zh": "输入的分子超过 6 个；仅处理前 6 个。", "de": "Es wurden mehr als 6 Moleküle eingegeben; nur die ersten 6 werden verarbeitet.", "ja": "6個を超える分子が入力されました。最初の6個のみ処理されます。"},
     "benchmark_min_molecules_warn": {"pt": "Digite ao menos 2 moléculas válidas, separadas por vírgula.", "en": "Enter at least 2 valid molecules, separated by commas.", "es": "Ingrese al menos 2 moléculas válidas, separadas por comas.", "zh": "请至少输入 2 个有效分子，以逗号分隔。", "de": "Geben Sie mindestens 2 gültige Moleküle ein, durch Kommas getrennt.", "ja": "カンマ区切りで少なくとも2つの有効な分子を入力してください。"},
 }
+
+EXTRA_TRANSLATIONS = {
+    "ai_insight_local": {
+        "pt": "Síntese por regras locais (sem LLM): {composto} ({formula}, {peso} g/mol) no contexto de {modulo}. Resumo descritivo, não é predição de eficácia; valide por docking in silico e ensaios in vitro.",
+        "en": "Local rule-based summary (no LLM): {composto} ({formula}, {peso} g/mol) in the context of {modulo}. Descriptive only, not an efficacy prediction; validate via in silico docking and in vitro assays.",
+        "es": "Síntesis por reglas locales (sin LLM): {composto} ({formula}, {peso} g/mol) en el contexto de {modulo}. Resumen descriptivo, no una predicción de eficacia; valide mediante acoplamiento in silico y ensayos in vitro.",
+        "zh": "本地规则摘要（无LLM）：{composto}（{formula}，{peso} g/mol），应用于{modulo}。仅为描述性摘要，不构成疗效预测；请通过计算机对接和体外实验验证。",
+        "de": "Lokale regelbasierte Zusammenfassung (ohne LLM): {composto} ({formula}, {peso} g/mol) im Kontext {modulo}. Nur deskriptiv, keine Wirksamkeitsvorhersage; Validierung durch In-silico-Docking und In-vitro-Tests.",
+        "ja": "ローカルルールベース要約（LLMなし）：{modulo}における{composto}（{formula}、{peso} g/mol）。記述的要約であり有効性予測ではありません。インシリコドッキングとin vitro試験で検証してください。"},
+    "batch_ai_coherence": {
+        "pt": "Escopo: triagem preliminar no módulo {modulo}, baseada apenas em massa molecular e na existência de publicações no PubMed.",
+        "en": "Scope: preliminary screening in the {modulo} module, based only on molecular mass and PubMed publication availability.",
+        "es": "Alcance: cribado preliminar en el módulo {modulo}, basado solo en masa molecular y existencia de publicaciones en PubMed.",
+        "zh": "范围：在{modulo}模块中进行的初步筛选，仅基于分子量及 PubMed 文献是否存在。",
+        "de": "Umfang: vorläufiges Screening im Modul {modulo}, nur auf Molekülmasse und Verfügbarkeit von PubMed-Publikationen basierend.",
+        "ja": "範囲：{modulo}モジュールでの予備スクリーニング。分子量とPubMed論文の有無のみに基づきます。"},
+    "batch_ai_pk": {
+        "pt": "Evidência: {n} composto(s) possuem ao menos uma publicação no PubMed (impacto e qualidade não avaliados).",
+        "en": "Evidence: {n} compound(s) have at least one PubMed publication (impact and quality not assessed).",
+        "es": "Evidencia: {n} compuesto(s) tienen al menos una publicación en PubMed (impacto y calidad no evaluados).",
+        "zh": "证据：{n} 个化合物至少有一篇 PubMed 文献（未评估影响力与质量）。",
+        "de": "Evidenz: {n} Verbindung(en) haben mindestens eine PubMed-Publikation (Impact und Qualität nicht bewertet).",
+        "ja": "エビデンス：{n}件の化合物に少なくとも1件のPubMed論文があります（インパクトと質は未評価）。"},
+    "batch_ai_recommendation": {
+        "pt": "Recomendação: usar apenas como triagem inicial; validar com docking in silico, literatura primária e ensaios in vitro.",
+        "en": "Recommendation: use only as an initial screen; validate with in silico docking, primary literature and in vitro assays.",
+        "es": "Recomendación: usar solo como cribado inicial; validar con acoplamiento in silico, literatura primaria y ensayos in vitro.",
+        "zh": "建议：仅作初步筛选；需通过计算机对接、原始文献和体外实验验证。",
+        "de": "Empfehlung: nur als erstes Screening verwenden; durch In-silico-Docking, Primärliteratur und In-vitro-Tests validieren.",
+        "ja": "推奨事項：初期スクリーニングとしてのみ使用し、インシリコドッキング、一次文献、in vitro試験で検証してください。"},
+    "batch_unresolved_warning": {
+        "pt": "{n} composto(s) não resolvido(s) no PubChem (nome inválido ou falha de rede): {nomes}.",
+        "en": "{n} compound(s) unresolved on PubChem (invalid name or network failure): {nomes}.",
+        "es": "{n} compuesto(s) no resuelto(s) en PubChem (nombre inválido o fallo de red): {nomes}.",
+        "zh": "{n} 个化合物在 PubChem 中未解析（名称无效或网络故障）：{nomes}。",
+        "de": "{n} Verbindung(en) bei PubChem nicht aufgelöst (ungültiger Name oder Netzwerkfehler): {nomes}.",
+        "ja": "{n}件の化合物がPubChemで解決できませんでした（無効な名前またはネットワーク障害）：{nomes}。"},
+    "batch_truncated_warning": {
+        "pt": "A planilha excede {max} compostos; apenas os {max} primeiros foram processados.",
+        "en": "The spreadsheet exceeds {max} compounds; only the first {max} were processed.",
+        "es": "La hoja excede {max} compuestos; solo se procesaron los primeros {max}.",
+        "zh": "表格超过 {max} 个化合物；仅处理前 {max} 个。",
+        "de": "Die Tabelle überschreitet {max} Verbindungen; nur die ersten {max} wurden verarbeitet.",
+        "ja": "スプレッドシートが{max}件を超えています。最初の{max}件のみ処理されました。"},
+    "herg_detail": {
+        "pt": "Score: {score}/{max} | LogP: {logp} | Anéis aromáticos: {aneis} | N básicos: {nb}",
+        "en": "Score: {score}/{max} | LogP: {logp} | Aromatic rings: {aneis} | Basic N: {nb}",
+        "es": "Puntaje: {score}/{max} | LogP: {logp} | Anillos aromáticos: {aneis} | N básicos: {nb}",
+        "zh": "评分：{score}/{max} | LogP：{logp} | 芳香环：{aneis} | 碱性N：{nb}",
+        "de": "Score: {score}/{max} | LogP: {logp} | Aromatische Ringe: {aneis} | Basische N: {nb}",
+        "ja": "スコア：{score}/{max} | LogP：{logp} | 芳香環：{aneis} | 塩基性N：{nb}"},
+    "radar_herg_axis": {"pt": "hERG (invertido)", "en": "hERG (inverted)", "es": "hERG (invertido)", "zh": "hERG（反向）", "de": "hERG (invertiert)", "ja": "hERG（反転）"},
+    "pdb_invalid_id": {
+        "pt": "ID PDB inválido: use 4 caracteres alfanuméricos (ex.: 1IEP).",
+        "en": "Invalid PDB ID: use 4 alphanumeric characters (e.g. 1IEP).",
+        "es": "ID PDB inválido: use 4 caracteres alfanuméricos (ej.: 1IEP).",
+        "zh": "PDB ID 无效：请使用 4 位字母数字字符（例如 1IEP）。",
+        "de": "Ungültige PDB-ID: 4 alphanumerische Zeichen verwenden (z. B. 1IEP).",
+        "ja": "PDB IDが無効です：英数字4文字で入力してください（例：1IEP）。"},
+    "pdb_invalid_file": {
+        "pt": "Arquivo inválido ou muito grande (máx. 25 MB e com registros ATOM).",
+        "en": "Invalid or too large file (max 25 MB and must contain ATOM records).",
+        "es": "Archivo inválido o demasiado grande (máx. 25 MB y con registros ATOM).",
+        "zh": "文件无效或过大（最大 25 MB，且需包含 ATOM 记录）。",
+        "de": "Ungültige oder zu große Datei (max. 25 MB, ATOM-Einträge erforderlich).",
+        "ja": "ファイルが無効または大きすぎます（最大25MB、ATOMレコード必須）。"},
+}
+TRANSLATIONS.update(EXTRA_TRANSLATIONS)
 
 MODULE_TRANSLATIONS = {
     "Longevidade Celular e Oncologia": {"pt": "Longevidade Celular e Oncologia", "en": "Cellular Longevity & Oncology", "es": "Longevidad Celular y Oncología", "zh": "细胞长寿与肿瘤学", "de": "Zelluläre Langlebigkeit & Onkologie", "ja": "細胞老化制御と腫瘍学"},
@@ -339,35 +422,31 @@ def modulo_nome(modulo_pt):
 
 # =====================================================================
 # CSS CENTRALIZADO (style.css) — acompanha o tema nativo do Streamlit
-# (Light / Dark / System) via var(--background-color),
-# var(--secondary-background-color) e var(--text-color). Sem paletas
-# fixas e sem detecção de tema via JS: o próprio Streamlit atualiza
-# essas variáveis automaticamente quando o usuário troca de tema no
-# menu nativo (⋮ → Settings), sem precisar de rerun em Python.
 # =====================================================================
-def load_css(caminho: str = "style.css") -> None:
-    """Lê o arquivo de estilo externo e injeta seu conteúdo na aplicação."""
+CSS_FALLBACK = (":root{--accent-purple:#8b5cf6;--text-primary:currentColor;--text-secondary:currentColor;"
+                "--bg-card:rgba(128,128,128,.08);--border-subtle:rgba(128,128,128,.3);}")
+
+@st.cache_data(show_spinner=False)
+def _ler_css(caminho, mtime):
     try:
         with open(caminho, encoding="utf-8") as f:
-            css = f.read()
-        st.markdown(f"<style>{css}</style>", unsafe_allow_html=True)
+            return f.read()
     except FileNotFoundError:
-        logging.warning(
-            "Arquivo de estilo '%s' não encontrado; seguindo com o tema padrão do Streamlit.",
-            caminho,
-        )
+        logging.warning("Arquivo de estilo '%s' não encontrado; usando fallback.", caminho)
+        return ""
+
+def load_css(caminho="style.css"):
+    mtime = os.path.getmtime(caminho) if os.path.exists(caminho) else 0
+    st.markdown(f"<style>{CSS_FALLBACK}{_ler_css(caminho, mtime)}</style>", unsafe_allow_html=True)
 
 load_css()
 
 # --- ESTADO GLOBAL ---
-if "historico_auditoria" not in st.session_state:
-    st.session_state.historico_auditoria = []
-if "eln_experimentos" not in st.session_state:
-    st.session_state.eln_experimentos = []
-if "cache_moleculas" not in st.session_state:
-    st.session_state.cache_moleculas = {}
-if "idioma_ativo" not in st.session_state:
-    st.session_state.idioma_ativo = "pt"
+st.session_state.setdefault("historico_auditoria", [])
+st.session_state.setdefault("auditoria_chaves", set())
+st.session_state.setdefault("eln_experimentos", [])
+st.session_state.setdefault("idioma_ativo", "pt")
+
 
 @st.cache_resource(show_spinner=False)
 def carregar_catalogo_pains():
@@ -465,7 +544,7 @@ MOCK_PUBCHEM_DATA = {
     "navitoclax": {"formula": "C47H55ClF3N5O6S3", "weight": 974.6, "smiles": "CC1(C)CCC(CN2CCC(N(C)c3ccc(C(=O)NS(=O)(=O)c4ccc(N5CCC(CN6CCOCC6)CC5)cc4[N+](=O)[O-])c(Oc4cnc5[nH]ccc5c4)c3)=CC2)=C1c1ccc(Cl)cc1"},
     "fisetin": {"formula": "C15H10O6", "weight": 286.24, "smiles": "O=c1c(O)c(-c2ccc(O)c(O)c2)oc2cc(O)ccc12"},
     "resveratrol": {"formula": "C14H12O3", "weight": 228.25, "smiles": "Oc1ccc(/C=C/c2cc(O)cc(O)c2)cc1"},
-    "rapamycin": {"formula": "C51H79NO13", "weight": 914.2, "smiles": "C[C@@H]1CC[C@H]2C[C@@H](/C(=C/C=C/C=C/[C@@H](C[C@@H](C(=O)[C@H](CC[C@@H](/C(=C/[C@H](C(=O)C[C@H](OC(=O)[C@@H]3CCCCN3C(=O)C(=O)[C@@]1(O)O2)[C@H](C)C[C@@H]4CC[C@H]([C@@H](C4)OC)O)/C)O)OC)C)C)/C)OC",},
+    "rapamycin": {"formula": "C51H79NO13", "weight": 914.2, "smiles": "C[C@@H]1CC[C@H]2C[C@@H](/C(=C/C=C/C=C/[C@@H](C[C@@H](C(=O)[C@H](CC[C@@H](/C(=C/[C@H](C(=O)C[C@H](OC(=O)[C@@H]3CCCCN3C(=O)C(=O)[C@@]1(O)O2)[C@H](C)C[C@@H]4CC[C@H]([C@@H](C4)OC)O)/C)O)OC)C)C)/C)OC"},
     "metformin": {"formula": "C4H11N5", "weight": 129.16, "smiles": "CN(C)C(=N)NC(=N)N"},
     "donepezil": {"formula": "C24H29NO3", "weight": 379.5, "smiles": "COc1cc2c(cc1OC)C(=O)C(CC1CCN(Cc3ccccc3)CC1)C2"},
     "memantine": {"formula": "C12H21N", "weight": 179.3, "smiles": "CC12CC3CC(C)(C1)CC(N)(C3)C2"},
@@ -475,14 +554,8 @@ MOCK_PUBCHEM_DATA = {
     "semaglutide": {"formula": "C187H291N45O59", "weight": 4113.4, "smiles": ""},
     "tirzepatide": {"formula": "C225H348N48O68", "weight": 4813.5, "smiles": ""},
     "adalimumab": {"formula": "C6428H9912N1694O1987S46", "weight": 144190.3, "smiles": ""},
-    "tofacitinib": {"formula": "C16H20N6O", "weight": 312.38, "smiles": "C[C@H]1CCN(C(=O)CC#N)C[C@@H]1N(C)c1ncnc2[nH]ccc12"}
+    "tofacitinib": {"formula": "C16H20N6O", "weight": 312.38, "smiles": "C[C@H]1CCN(C(=O)CC#N)C[C@@H]1N(C)c1ncnc2[nH]ccc12"},
 }
-
-
-def sanitize_pdf_text(texto):
-    if texto is None:
-        return ""
-    return str(texto).encode("latin-1", errors="replace").decode("latin-1")
 
 
 def analisar_acao_reacao(peso_molecular, tag):
@@ -493,27 +566,6 @@ def analisar_acao_reacao(peso_molecular, tag):
     if tag == "senolitico":
         return t("safety_senolytic")
     return t("safety_default")
-
-
-def gerar_insight_ia(composto, formula, peso, modulo, api_key):
-    time.sleep(1.2)
-    if api_key:
-        return t("ai_insight_external", composto=composto.capitalize(), formula=formula, peso=peso, modulo=modulo)
-    else:
-        return t("ai_insight_local", composto=composto.capitalize(), formula=formula, peso=peso, modulo=modulo)
-
-
-def gerar_moa_ia(composto, classe, descritores, modulo):
-    time.sleep(1.0)
-    perfil = t("moa_profile_lipophilic") if descritores.get("logp", 0) > 2 else t("moa_profile_hydrophilic")
-    tamanho = t("moa_size_compact") if descritores.get("peso", 0) < 350 else t("moa_size_bulky")
-    return (
-        f"**{t('moa_title')} {composto.capitalize()}**\n\n"
-        f"- **{t('moa_class_label')}** {classe}.\n"
-        f"- **{t('moa_profile_label', perfil=perfil, tamanho=tamanho)}**\n"
-        f"- **{t('moa_hypothesis_label', modulo=modulo_nome(modulo), classe=classe)}**\n"
-        f"- **{t('moa_summary_label')}**"
-    )
 
 
 def classificar_evidencia_ia(titulo_artigo, pmid_valido):
@@ -536,205 +588,6 @@ def classificar_evidencia_ia(titulo_artigo, pmid_valido):
     return {"nivel": t("evid_lvl_primary"), "cor": "orange", "fator_confianca": t("conf_moderate")}
 
 
-def estimar_risco_herg(mol):
-    if mol is None:
-        return {"score": 0, "risco": t("risk_low")}
-    logp = Crippen.MolLogP(mol)
-    aromatic_rings = rdMolDescriptors.CalcNumAromaticRings(mol)
-    basic_n = sum(1 for atom in mol.GetAtoms() if atom.GetSymbol() == "N" and atom.GetFormalCharge() >= 0 and not atom.GetIsAromatic())
-    peso = Descriptors.MolWt(mol)
-
-    score = 0
-    if logp > 3.5:
-        score += 2
-    elif logp > 2:
-        score += 1
-    if aromatic_rings >= 3:
-        score += 2
-    elif aromatic_rings == 2:
-        score += 1
-    if basic_n >= 1:
-        score += 1
-    if peso > 350:
-        score += 1
-
-    if score >= 5:
-        risco = t("risk_high")
-    elif score >= 3:
-        risco = t("risk_moderate")
-    else:
-        risco = t("risk_low")
-    return {"score": score, "risco": risco, "logp": round(logp, 2), "aneis_aromaticos": aromatic_rings, "n_basicos": basic_n}
-
-
-def calcular_descritores_rdkit(smiles):
-    if not smiles:
-        return None
-    mol = Chem.MolFromSmiles(smiles)
-    if mol is None:
-        return None
-
-    peso = Descriptors.MolWt(mol)
-    logp = Crippen.MolLogP(mol)
-    hbd = rdMolDescriptors.CalcNumHBD(mol)
-    hba = rdMolDescriptors.CalcNumHBA(mol)
-    tpsa = rdMolDescriptors.CalcTPSA(mol)
-    rot_bonds = rdMolDescriptors.CalcNumRotatableBonds(mol)
-    aneis = rdMolDescriptors.CalcNumRings(mol)
-
-    violacoes_lipinski = sum([peso > 500, logp > 5, hbd > 5, hba > 10])
-    lipinski_ok = violacoes_lipinski <= 1
-    veber_ok = (rot_bonds <= 10) and (tpsa <= 140)
-    egan_ok = (logp <= 5.88) and (tpsa <= 131.6)
-
-    match_pains = CATALOGO_PAINS.GetMatches(mol)
-    alertas_pains = [entry.GetDescription() for entry in match_pains]
-
-    herg = estimar_risco_herg(mol)
-
-    return {
-        "mol": mol, "peso": round(peso, 2), "logp": round(logp, 2), "hbd": hbd, "hba": hba,
-        "tpsa": round(tpsa, 2), "rot_bonds": rot_bonds, "aneis": aneis,
-        "violacoes_lipinski": violacoes_lipinski, "lipinski_ok": lipinski_ok,
-        "veber_ok": veber_ok, "egan_ok": egan_ok, "alertas_pains": alertas_pains, "herg": herg,
-    }
-
-
-def gerar_svg_2d(mol, tamanho=(400, 350)):
-    try:
-        drawer = Draw.rdMolDraw2D.MolDraw2DSVG(tamanho[0], tamanho[1])
-        Draw.rdMolDraw2D.PrepareAndDrawMolecule(drawer, mol)
-        drawer.FinishDrawing()
-        return drawer.GetDrawingText()
-    except Exception as e:
-        logging.error(f"Erro ao gerar SVG 2D: {e}")
-        return None
-
-
-def gerar_sdf_bytes(mol, nome_composto):
-    try:
-        mol_3d = Chem.AddHs(mol)
-        embed_status = AllChem.EmbedMolecule(mol_3d, randomSeed=42)
-        if embed_status == 0:
-            AllChem.MMFFOptimizeMolecule(mol_3d)
-        mol_3d.SetProp("_Name", nome_composto)
-        buf = io.StringIO()
-        writer = Chem.SDWriter(buf)
-        writer.write(mol_3d)
-        writer.close()
-        return buf.getvalue().encode("utf-8")
-    except Exception as e:
-        logging.error(f"Erro ao gerar SDF: {e}")
-        return None
-
-
-def gerar_bibtex(nome_composto, pmid, titulo=None):
-    chave = f"{nome_composto.replace(' ', '_')}{datetime.now().year}"
-    titulo_final = titulo or f"Estudo farmacologico sobre {nome_composto}"
-    return (
-        f"@article{{{chave},\n  title = {{{titulo_final}}},\n  author = {{SenoTrack Curation Team}},\n"
-        f"  year = {{{datetime.now().year}}},\n  journal = {{PubMed Indexed Source}},\n  note = {{PMID: {pmid}}}\n}}"
-    )
-
-
-def gerar_ris(nome_composto, pmid, titulo=None):
-    titulo_final = titulo or f"Estudo farmacologico sobre {nome_composto}"
-    return (
-        f"TY  - JOUR\nTI  - {titulo_final}\nAU  - SenoTrack Curation Team\n"
-        f"PY  - {datetime.now().year}\nAN  - PMID:{pmid}\nER  -"
-    )
-
-
-@st.cache_data(ttl=3600, show_spinner=False)
-def buscar_pubmed_id(nome_composto, modo_offline=False):
-    """Retorna o numero do PMID (string) ou None se nao encontrado."""
-    if modo_offline:
-        return "12345678"
-    try:
-        url = f"https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi?db=pubmed&term={nome_composto}[Title/Abstract]&retmode=json&retmax=1"
-        res = requests.get(url, timeout=5)
-        if res.status_code == 200:
-            ids = res.json().get("esearchresult", {}).get("idlist", [])
-            if ids:
-                return ids[0]
-    except Exception as e:
-        logging.error(f"Erro PubMed: {e}")
-    return None
-
-
-@st.cache_data(ttl=3600, show_spinner=False)
-def buscar_titulo_pubmed(pmid_num, modo_offline=False):
-    if modo_offline or not pmid_num:
-        return "Randomized clinical trial evaluating compound efficacy (offline demonstration)"
-    try:
-        url = f"https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esummary.fcgi?db=pubmed&id={pmid_num}&retmode=json"
-        res = requests.get(url, timeout=5)
-        if res.status_code == 200:
-            data = res.json()
-            item = data.get("result", {}).get(str(pmid_num), {})
-            return item.get("title", "")
-    except Exception as e:
-        logging.error(f"Erro ao buscar titulo PubMed: {e}")
-    return ""
-
-
-@st.cache_data(ttl=3600, show_spinner=False)
-def buscar_interacao_rxnav(nome_composto, modo_offline=False):
-    """Retorna o RxCUI (string) ou None se nao encontrado."""
-    if modo_offline:
-        return "9060"
-    try:
-        url = f"https://rxnav.nlm.nih.gov/REST/rxcui.json?name={nome_composto}"
-        res = requests.get(url, timeout=5)
-        if res.status_code == 200:
-            rxcuis = res.json().get("idGroup", {}).get("rxnormId", [])
-            if rxcuis:
-                return rxcuis[0]
-    except Exception as e:
-        logging.error(f"Erro RxNav: {e}")
-    return None
-
-
-@st.cache_data(ttl=3600, show_spinner=False)
-def consultar_api_pubchem(nome_composto, modo_offline=False):
-    nome_limpo = nome_composto.strip().lower()
-    if modo_offline:
-        if nome_limpo in MOCK_PUBCHEM_DATA:
-            data = MOCK_PUBCHEM_DATA[nome_limpo]
-            return {"Title": nome_composto.capitalize(), "MolecularFormula": data["formula"],
-                    "MolecularWeight": data["weight"], "CanonicalSMILES": data.get("smiles", "")}
-        return {"Title": nome_composto.capitalize(), "MolecularFormula": "-", "MolecularWeight": 350.0, "CanonicalSMILES": ""}
-
-    url = f"https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/name/{nome_limpo}/property/MolecularFormula,MolecularWeight,Title,CanonicalSMILES/JSON"
-    try:
-        res = requests.get(url, timeout=8)
-        if res.status_code == 200:
-            prop = res.json()["PropertyTable"]["Properties"][0]
-            return {
-                "Title": prop.get("Title", nome_composto.capitalize()),
-                "MolecularFormula": prop.get("MolecularFormula", "-"),
-                "MolecularWeight": float(prop.get("MolecularWeight", 300.0)),
-                "CanonicalSMILES": prop.get("CanonicalSMILES", "")
-            }
-    except Exception as e:
-        logging.error(f"Erro na conexao com o PubChem: {str(e)}")
-    return None
-
-
-@st.cache_data(ttl=3600, show_spinner=False)
-def buscar_pdb_rcsb(pdb_id, modo_offline=False):
-    if modo_offline:
-        return None
-    try:
-        url = f"https://files.rcsb.org/download/{pdb_id.upper()}.pdb"
-        res = requests.get(url, timeout=8)
-        if res.status_code == 200:
-            return res.text
-    except Exception as e:
-        logging.error(f"Erro ao buscar PDB {pdb_id}: {e}")
-    return None
-
-
 def obter_dados_cientificos_v2(nome_composto, modulo_selecionado):
     idioma = st.session_state.get("idioma_ativo", "pt")
     nome_limpo = nome_composto.strip().lower()
@@ -754,137 +607,7 @@ def obter_dados_cientificos_v2(nome_composto, modulo_selecionado):
     }
 
 
-def obter_smiles_composto(nome_composto, modo_offline):
-    nome_limpo = nome_composto.strip().lower()
-    prop = consultar_api_pubchem(nome_composto, modo_offline=modo_offline)
-    if prop and prop.get("CanonicalSMILES"):
-        return prop["CanonicalSMILES"]
-    if nome_limpo in MOCK_PUBCHEM_DATA and MOCK_PUBCHEM_DATA[nome_limpo].get("smiles"):
-        return MOCK_PUBCHEM_DATA[nome_limpo]["smiles"]
-    return None
-
-
-class PDFLaudoPremium(FPDF):
-    def header(self):
-        self.set_fill_color(16, 20, 32)
-        self.rect(0, 0, 210, 32, "F")
-        self.set_fill_color(139, 124, 246)
-        self.rect(0, 30, 210, 1.2, "F")
-        self.set_font("Helvetica", "B", 16)
-        self.set_text_color(255, 255, 255)
-        self.cell(0, 10, "SENOTRACK ENTERPRISE SOLUTION", ln=True, align="C")
-        self.set_font("Helvetica", "I", 9)
-        self.set_text_color(180, 190, 220)
-        self.cell(0, 5, "Relatorio Executivo Customizado de Viabilidade de Compostos v10.0", ln=True, align="C")
-        self.ln(12)
-
-    def footer(self):
-        self.set_y(-15)
-        self.set_font("Helvetica", "I", 8)
-        self.set_text_color(120, 120, 120)
-        self.cell(0, 10, f"Pagina {self.page_no()}", align="C")
-
-
-def to_pdf_bytes(pdf):
-    saida = pdf.output()
-    if isinstance(saida, str):
-        return saida.encode("latin-1")
-    return bytes(saida)
-
-
-def gerar_pdf_laudo(df, descritores=None):
-    pdf = PDFLaudoPremium()
-    pdf.set_auto_page_break(auto=True, margin=20)
-    pdf.add_page()
-    pdf.set_font("Helvetica", "", 10)
-
-    for _, row in df.iterrows():
-        pdf.set_font("Helvetica", "B", 12)
-        pdf.cell(0, 10, sanitize_pdf_text(f"Composto: {row['Nome Oficial']}"), ln=True)
-        pdf.set_font("Helvetica", "", 10)
-        pdf.multi_cell(0, 5, sanitize_pdf_text(f"Aplicacao: {row['Aplicação Médica']}"))
-        pdf.ln(3)
-
-    if descritores:
-        pdf.set_font("Helvetica", "B", 11)
-        pdf.cell(0, 7, "Perfil Fisico-Quimico Avancado (RDKit)", ln=True)
-        pdf.set_font("Helvetica", "", 10)
-        pdf.multi_cell(0, 5, sanitize_pdf_text(
-            f"Peso: {descritores['peso']} g/mol | LogP: {descritores['logp']} | TPSA: {descritores['tpsa']} A2 | "
-            f"Ligacoes Rotacionaveis: {descritores['rot_bonds']} | Lipinski OK: {descritores['lipinski_ok']} | "
-            f"Veber OK: {descritores['veber_ok']} | Egan OK: {descritores['egan_ok']} | "
-            f"Alertas PAINS: {len(descritores['alertas_pains'])} | Risco hERG: {descritores['herg']['risco']}"
-        ))
-    return to_pdf_bytes(pdf)
-
-
-def gerar_pdf_laudo_lote(df_exibicao, grafico_img_bytes):
-    pdf = PDFLaudoPremium()
-    pdf.set_auto_page_break(auto=True, margin=20)
-    pdf.add_page()
-    pdf.set_text_color(50, 50, 50)
-    pdf.set_font("Helvetica", "B", 12)
-    pdf.cell(0, 7, "1. Sumario Analitico da Triagem Filtrada em Lote", ln=True)
-    pdf.set_font("Helvetica", "", 10)
-    pdf.cell(0, 5, sanitize_pdf_text(f"Volume de compostos que atendem aos criterios de filtragem: {len(df_exibicao)} amostras."), ln=True)
-    pdf.ln(5)
-
-    if grafico_img_bytes:
-        pdf.set_font("Helvetica", "B", 12)
-        pdf.cell(0, 7, "2. Perfil de Distribuicao de Massa Molecular do Lote", ln=True)
-        pdf.ln(2)
-        try:
-            grafico_stream = io.BytesIO(grafico_img_bytes)
-            grafico_stream.name = "chart.png"
-            pdf.image(grafico_stream, x=15, w=180, h=85, type="PNG")
-        except Exception as e:
-            logging.error(f"Erro ao inserir grafico no PDF: {e}")
-        pdf.ln(5)
-
-    pdf.add_page()
-    pdf.set_font("Helvetica", "B", 12)
-    pdf.cell(0, 7, "3. Detalhamento Tecnico por Registro Biomolecular", ln=True)
-    pdf.ln(2)
-
-    for _, row in df_exibicao.iterrows():
-        pdf.set_fill_color(235, 238, 245)
-        pdf.set_font("Helvetica", "B", 11)
-        pdf.cell(0, 7, sanitize_pdf_text(f" {row['Nome Oficial']} ({row.get('Fórmula', '-')}) - {row.get('Massa Molecular', '-')}"), border=1, ln=True, fill=True)
-        pdf.ln(1)
-        pdf.set_font("Helvetica", "B", 9)
-        pdf.set_text_color(139, 124, 246)
-        pdf.cell(0, 5, "    Mecanismo e Aplicacao Clinica:", ln=True)
-        pdf.set_font("Helvetica", "", 9)
-        pdf.set_text_color(50, 50, 50)
-        pdf.multi_cell(0, 5, sanitize_pdf_text(f"    {row.get('Aplicação Médica', '')}"))
-        if 'Referência PubMed' in row and row['Referência PubMed']:
-            pdf.set_font("Helvetica", "I", 8)
-            pdf.set_text_color(100, 100, 100)
-            pdf.cell(0, 5, f"    Ref: PMID {row['Referência PubMed']}", ln=True)
-        pdf.ln(3)
-    return to_pdf_bytes(pdf)
-
-
-def gerar_pdf_eln(experimentos):
-    pdf = PDFLaudoPremium()
-    pdf.set_auto_page_break(auto=True, margin=20)
-    pdf.add_page()
-    pdf.set_font("Helvetica", "B", 13)
-    pdf.cell(0, 8, "Caderno Eletronico de Laboratorio (ELN)", ln=True)
-    pdf.ln(2)
-    for exp in experimentos:
-        pdf.set_fill_color(230, 238, 250)
-        pdf.set_font("Helvetica", "B", 11)
-        pdf.cell(0, 7, sanitize_pdf_text(f"Registro: {exp['nome']}  |  {exp['timestamp']}"), border=1, ln=True, fill=True)
-        pdf.set_font("Helvetica", "", 9)
-        pdf.multi_cell(0, 5, sanitize_pdf_text(f"Modulo: {exp['modulo']} | Observacoes: {exp.get('notas', '-')}"))
-        pdf.multi_cell(0, 5, sanitize_pdf_text(f"Dados: {json.dumps(exp.get('dados', {}), ensure_ascii=False)}"))
-        pdf.ln(3)
-    return to_pdf_bytes(pdf)
-
-
 def renomear_colunas_display(df):
-    idioma = st.session_state.get("idioma_ativo", "pt")
     mapa_interno = {
         "Nome Oficial": "col_official_name", "Fórmula": "col_formula", "Massa Molecular": "col_mol_mass",
         "Aplicação Médica": "col_medical_app", "Mapeamento Pipeline": "col_pipeline",
@@ -895,20 +618,450 @@ def renomear_colunas_display(df):
     return df.rename(columns=mapping)
 
 
-if not os.path.exists("modelo_triagem_v7.xlsx"):
-    df_modelo = pd.DataFrame({"Composto": ["quercetin", "dasatinib", "donepezil", "sacubitril", "empagliflozin", "semaglutide", "tofacitinib", "rapamycin"]})
-    df_modelo.to_excel("modelo_triagem_v7.xlsx", index=False)
+# ---------------- REDE ----------------
+class ErroRede(Exception):
+    pass
 
-# =====================================================================
-# SIDEBAR — SELETOR DE IDIOMA (primeiro, para propagar a todo o restante)
-# =====================================================================
-rotulo_idioma_atual = [k for k, v in IDIOMAS_DISPONIVEIS.items() if v == st.session_state.idioma_ativo][0]
-escolha_idioma = st.sidebar.selectbox(
-    "Idioma / Language / 语言",
-    list(IDIOMAS_DISPONIVEIS.keys()),
-    index=list(IDIOMAS_DISPONIVEIS.keys()).index(rotulo_idioma_atual),
-)
-st.session_state.idioma_ativo = IDIOMAS_DISPONIVEIS[escolha_idioma]
+@st.cache_resource(show_spinner=False)
+def _sessao_http():
+    s = requests.Session()
+    retry = Retry(total=2, backoff_factor=0.6, status_forcelist=(429, 500, 502, 503, 504), allowed_methods=("GET",))
+    s.mount("https://", HTTPAdapter(max_retries=retry, pool_maxsize=16))
+    s.headers.update({"User-Agent": "SenoTrack/10.0 (research app)"})
+    return s
+
+def _http_get(url, params=None, timeout=8):
+    """None = não encontrado/requisição inválida (cacheável). ErroRede = falha transitória (NÃO cacheada)."""
+    try:
+        r = _sessao_http().get(url, params=params, timeout=timeout)
+    except requests.RequestException as e:
+        raise ErroRede(str(e)) from e
+    if r.status_code in (400, 404):
+        return None
+    if r.status_code != 200:
+        raise ErroRede(f"HTTP {r.status_code}")
+    return r
+
+def _safe(fn, *args, default=None):
+    try:
+        return fn(*args)
+    except ErroRede as e:
+        logging.warning("Falha de rede em %s: %s", fn.__name__, e)
+    except Exception:
+        logging.exception("Erro inesperado em %s", fn.__name__)
+    return default
+
+def executar_paralelo(fn, itens, max_workers=4):
+    ctx = get_script_run_ctx() if get_script_run_ctx else None
+
+    def _worker(item):
+        if ctx is not None and add_script_run_ctx:
+            add_script_run_ctx(threading.current_thread(), ctx)
+        try:
+            return fn(item)
+        except Exception:
+            logging.exception("Falha ao processar item")
+            return None
+
+    with ThreadPoolExecutor(max_workers=max(1, min(max_workers, len(itens) or 1))) as ex:
+        return list(ex.map(_worker, itens))
+
+# ---------------- PUBCHEM ----------------
+_PUG = "https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/name"
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def _pubchem_cached(nome):
+    for props in ("MolecularFormula,MolecularWeight,Title,SMILES,ConnectivitySMILES",
+                  "MolecularFormula,MolecularWeight,Title,CanonicalSMILES"):
+        r = _http_get(f"{_PUG}/{quote(nome, safe='')}/property/{props}/JSON")
+        if r is None:
+            continue
+        lista = r.json().get("PropertyTable", {}).get("Properties", [])
+        if lista:
+            p = lista[0]
+            return {
+                "Title": p.get("Title", nome.capitalize()),
+                "MolecularFormula": p.get("MolecularFormula", "-"),
+                "MolecularWeight": float(p.get("MolecularWeight", 0) or 0),
+                "SMILES": p.get("SMILES") or p.get("ConnectivitySMILES") or p.get("CanonicalSMILES") or "",
+            }
+    return None
+
+def consultar_api_pubchem(nome_composto, modo_offline=False):
+    nome = (nome_composto or "").strip().lower()
+    if not nome:
+        return None
+    if modo_offline:
+        d = MOCK_PUBCHEM_DATA.get(nome)
+        if not d:
+            return None
+        return {"Title": nome.capitalize(), "MolecularFormula": d["formula"],
+                "MolecularWeight": d["weight"], "SMILES": d.get("smiles", "")}
+    return _safe(_pubchem_cached, nome)
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def _sdf3d_cached(nome):
+    r = _http_get(f"{_PUG}/{quote(nome, safe='')}/SDF", params={"record_type": "3d"})
+    return r.text if r is not None and r.text.strip() else None
+
+def buscar_sdf_3d(nome_composto):
+    return _safe(_sdf3d_cached, nome_composto.strip().lower())
+
+def obter_smiles_composto(nome_composto, modo_offline):
+    nome = nome_composto.strip().lower()
+    prop = consultar_api_pubchem(nome, modo_offline)
+    if prop and prop.get("SMILES"):
+        return prop["SMILES"]
+    return MOCK_PUBCHEM_DATA.get(nome, {}).get("smiles") or None
+
+# ---------------- PUBMED / RXNAV / PDB ----------------
+_EUTILS = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils"
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def _pubmed_id_cached(nome):
+    r = _http_get(f"{_EUTILS}/esearch.fcgi", params={
+        "db": "pubmed", "term": f'"{nome}"[Title/Abstract]', "retmode": "json", "retmax": 1, "sort": "relevance"})
+    if r is None:
+        return None
+    ids = r.json().get("esearchresult", {}).get("idlist", [])
+    return ids[0] if ids else None
+
+def buscar_pubmed_id(nome_composto, modo_offline=False):
+    nome = (nome_composto or "").strip().lower().replace('"', "")
+    if modo_offline:
+        return "12345678"  # PMID fictício de demonstração
+    return _safe(_pubmed_id_cached, nome) if nome else None
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def _pubmed_meta_cached(pmid):
+    r = _http_get(f"{_EUTILS}/esummary.fcgi", params={"db": "pubmed", "id": pmid, "retmode": "json"})
+    if r is None:
+        return {}
+    item = r.json().get("result", {}).get(str(pmid), {})
+    return {"title": (item.get("title") or "").strip(),
+            "authors": [a["name"] for a in item.get("authors", []) if a.get("name")],
+            "journal": item.get("fulljournalname") or item.get("source", ""),
+            "year": (item.get("pubdate") or "")[:4]}
+
+def buscar_metadados_pubmed(pmid, modo_offline=False):
+    if modo_offline:
+        return {"title": "Randomized clinical trial evaluating compound efficacy (offline demonstration)",
+                "authors": [], "journal": "", "year": ""}
+    return (_safe(_pubmed_meta_cached, str(pmid)) or {}) if pmid else {}
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def _rxnav_cached(nome):
+    r = _http_get("https://rxnav.nlm.nih.gov/REST/rxcui.json", params={"name": nome})
+    if r is None:
+        return None
+    ids = r.json().get("idGroup", {}).get("rxnormId", [])
+    return ids[0] if ids else None
+
+def buscar_interacao_rxnav(nome_composto, modo_offline=False):
+    if modo_offline:
+        return "9060"
+    nome = (nome_composto or "").strip().lower()
+    return _safe(_rxnav_cached, nome) if nome else None
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def _pdb_cached(pdb_id):
+    r = _http_get(f"https://files.rcsb.org/download/{pdb_id}.pdb", timeout=15)
+    if r is None or len(r.content) > MAX_PDB_BYTES:
+        return None
+    return r.text
+
+def buscar_pdb_rcsb(pdb_id, modo_offline=False):
+    if modo_offline or not PDB_ID_RE.match(pdb_id or ""):
+        return None
+    return _safe(_pdb_cached, pdb_id.upper())
+
+def coletar_dados_externos(nome, modo_offline):
+    """Pura (sem t()/session_state): segura para thread."""
+    return {"prop": consultar_api_pubchem(nome, modo_offline),
+            "pmid": buscar_pubmed_id(nome, modo_offline),
+            "rxcui": buscar_interacao_rxnav(nome, modo_offline)}
+
+# ---------------- IA LOCAL (honesta) ----------------
+def gerar_insight_ia(composto, formula, peso, modulo, api_key=None):
+    # TODO: integrar provedor LLM real quando api_key for informada; hoje é síntese determinística local.
+    return t("ai_insight_local", composto=composto.capitalize(), formula=formula, peso=peso, modulo=modulo)
+
+def gerar_moa_ia(composto, classe, descritores, modulo):
+    linhas = [f"**{t('moa_title')} {composto.capitalize()}**\n",
+              f"- **{t('moa_class_label')}** {classe}."]
+    if descritores:
+        perfil = t("moa_profile_lipophilic") if descritores.get("logp", 0) > 2 else t("moa_profile_hydrophilic")
+        tamanho = t("moa_size_compact") if descritores.get("peso", 0) < 350 else t("moa_size_bulky")
+        linhas.append(f"- **{t('moa_profile_label', perfil=perfil, tamanho=tamanho)}**")
+    linhas.append(f"- **{t('moa_hypothesis_label', modulo=modulo_nome(modulo), classe=classe)}**")
+    linhas.append(f"- **{t('moa_summary_label')}**")
+    return "\n".join(linhas)
+
+# ---------------- RDKIT ----------------
+SMARTS_AMINA_BASICA = Chem.MolFromSmarts("[NX3;!$(N-C=[O,S,N]);!$(N-a);!$(N-S(=O)=O);!$(N-[#7,#8])]")
+
+def estimar_risco_herg(mol):
+    """Retorna código neutro de idioma (low|moderate|high); traduzir na exibição com herg_label()."""
+    logp = Crippen.MolLogP(mol)
+    aneis = rdMolDescriptors.CalcNumAromaticRings(mol)
+    n_basicos = len(mol.GetSubstructMatches(SMARTS_AMINA_BASICA))
+    peso = Descriptors.MolWt(mol)
+    score = (2 if logp > 3.5 else 1 if logp > 2 else 0) + (2 if aneis >= 3 else 1 if aneis == 2 else 0) \
+        + (1 if n_basicos >= 1 else 0) + (1 if peso > 350 else 0)
+    codigo = "high" if score >= 5 else "moderate" if score >= 3 else "low"
+    return {"score": score, "codigo": codigo, "logp": round(logp, 2), "aneis_aromaticos": aneis, "n_basicos": n_basicos}
+
+def herg_label(herg):
+    return t(f"risk_{herg['codigo']}")
+
+@st.cache_data(show_spinner=False, max_entries=512)
+def _descritores_cached(smiles):
+    mol = Chem.MolFromSmiles(smiles)
+    if mol is None:
+        return None
+    peso, logp = Descriptors.MolWt(mol), Crippen.MolLogP(mol)
+    hbd, hba = rdMolDescriptors.CalcNumHBD(mol), rdMolDescriptors.CalcNumHBA(mol)
+    tpsa, rot = rdMolDescriptors.CalcTPSA(mol), rdMolDescriptors.CalcNumRotatableBonds(mol)
+    viol = sum([peso > 500, logp > 5, hbd > 5, hba > 10])
+    return {
+        "peso": round(peso, 2), "logp": round(logp, 2), "hbd": hbd, "hba": hba, "tpsa": round(tpsa, 2),
+        "rot_bonds": rot, "aneis": rdMolDescriptors.CalcNumRings(mol),
+        "violacoes_lipinski": viol, "lipinski_ok": viol <= 1,
+        "veber_ok": rot <= 10 and tpsa <= 140, "egan_ok": logp <= 5.88 and tpsa <= 131.6,
+        "alertas_pains": [e.GetDescription() for e in CATALOGO_PAINS.GetMatches(mol)],
+        "herg": estimar_risco_herg(mol),
+    }
+
+def calcular_descritores_rdkit(smiles):
+    if not smiles:
+        return None
+    d = _descritores_cached(smiles)
+    return None if d is None else {**d, "mol": Chem.MolFromSmiles(smiles)}
+
+def gerar_svg_2d(mol, tamanho=(400, 350)):
+    try:
+        d = rdMolDraw2D.MolDraw2DSVG(*tamanho)
+        rdMolDraw2D.PrepareAndDrawMolecule(d, mol)
+        d.FinishDrawing()
+        return d.GetDrawingText()
+    except Exception as e:
+        logging.error("Erro ao gerar SVG 2D: %s", e)
+        return None
+
+@st.cache_data(show_spinner=False, max_entries=64)
+def gerar_sdf_bytes(smiles, nome_composto):
+    try:
+        mol = Chem.MolFromSmiles(smiles)
+        if mol is None or mol.GetNumHeavyAtoms() > 150:
+            return None
+        mol3d = Chem.AddHs(mol)
+        if AllChem.EmbedMolecule(mol3d, randomSeed=42) != 0 and \
+           AllChem.EmbedMolecule(mol3d, randomSeed=42, useRandomCoords=True) != 0:
+            return None
+        AllChem.MMFFOptimizeMolecule(mol3d, maxIters=500)
+        mol3d.SetProp("_Name", nome_composto)
+        buf = io.StringIO()
+        w = Chem.SDWriter(buf)
+        w.write(mol3d)
+        w.close()
+        return buf.getvalue().encode("utf-8")
+    except Exception as e:
+        logging.error("Erro ao gerar SDF: %s", e)
+        return None
+
+def render_py3dmol(view, altura):
+    components.html(view._make_html(), height=altura)
+
+# ---------------- CITAÇÕES (metadados reais do PubMed) ----------------
+def _bib_escape(s):
+    return re.sub(r"([&%$#_])", r"\\\1", s or "")
+
+def gerar_bibtex(nome_composto, pmid, meta=None):
+    meta = meta or {}
+    ano = meta.get("year") or str(datetime.now().year)
+    autores = meta.get("authors") or []
+    prefixo = re.sub(r"[^A-Za-z0-9]", "", autores[0].split()[0]) if autores else "pmid"
+    campos = [f"  title = {{{{{_bib_escape(meta.get('title') or 'PMID ' + str(pmid))}}}}}"]
+    if autores:
+        campos.append(f"  author = {{{' and '.join(autores)}}}")
+    if meta.get("journal"):
+        campos.append(f"  journal = {{{_bib_escape(meta['journal'])}}}")
+    campos += [f"  year = {{{ano}}}", f"  note = {{PMID: {pmid}}}",
+               f"  url = {{https://pubmed.ncbi.nlm.nih.gov/{pmid}/}}"]
+    return f"@article{{{prefixo}{ano}pmid{pmid},\n" + ",\n".join(campos) + "\n}"
+
+def gerar_ris(nome_composto, pmid, meta=None):
+    meta = meta or {}
+    linhas = ["TY  - JOUR", f"TI  - {meta.get('title') or 'PMID ' + str(pmid)}"]
+    linhas += [f"AU  - {a}" for a in meta.get("authors", [])]
+    if meta.get("journal"):
+        linhas.append(f"JO  - {meta['journal']}")
+    if meta.get("year"):
+        linhas.append(f"PY  - {meta['year']}")
+    linhas += [f"AN  - PMID:{pmid}", f"UR  - https://pubmed.ncbi.nlm.nih.gov/{pmid}/", "ER  - "]
+    return "\n".join(linhas)
+
+def registrar_auditoria(modulo, pesquisado, nome, formula, peso):
+    chave = (modulo, pesquisado.lower())
+    if chave in st.session_state.auditoria_chaves:
+        return
+    st.session_state.auditoria_chaves.add(chave)
+    st.session_state.historico_auditoria.append({
+        "timestamp": datetime.now().isoformat(), "modulo": modulo, "composto_pesquisado": pesquisado,
+        "nome_oficial": nome, "formula": formula, "massa_molecular": peso})
+
+@st.cache_data(show_spinner=False)
+def gerar_modelo_xlsx():
+    buf = io.BytesIO()
+    pd.DataFrame({"Composto": ["quercetin", "dasatinib", "donepezil", "sacubitril",
+                               "empagliflozin", "semaglutide", "tofacitinib", "rapamycin"]}).to_excel(buf, index=False)
+    return buf.getvalue()
+
+@st.cache_data(show_spinner=False, max_entries=16)
+def grafico_massa_png(nomes, massas, rotulo_y):
+    fig, ax = plt.subplots(figsize=(7, 3.5))
+    ax.bar(nomes, massas, color="#8b5cf6", width=0.4)
+    ax.set_ylabel(rotulo_y, fontsize=9)
+    ax.tick_params(axis="both", labelsize=8)
+    plt.setp(ax.get_xticklabels(), rotation=30, ha="right")
+    fig.tight_layout()
+    buf = io.BytesIO()
+    fig.savefig(buf, format="png", dpi=200, facecolor="white")
+    plt.close(fig)
+    return buf.getvalue()
+
+
+# ---------------- PDF ----------------
+_MAPA_PDF = str.maketrans({"—": "-", "–": "-", "“": '"', "”": '"', "‘": "'", "’": "'", "≤": "<=", "≥": ">=", "★": "*"})
+
+def sanitize_pdf_text(texto):
+    if texto is None:
+        return ""
+    return str(texto).translate(_MAPA_PDF).encode("latin-1", errors="replace").decode("latin-1")
+
+
+class PDFLaudoPremium(FPDF):
+    def header(self):
+        self.set_fill_color(16, 20, 32)
+        self.rect(0, 0, 210, 32, "F")
+        self.set_fill_color(139, 124, 246)
+        self.rect(0, 30, 210, 1.2, "F")
+        self.set_font("Helvetica", "B", 16)
+        self.set_text_color(255, 255, 255)
+        self.cell(0, 10, "SENOTRACK ENTERPRISE SOLUTION", new_x="LMARGIN", new_y="NEXT", align="C")
+        self.set_font("Helvetica", "I", 9)
+        self.set_text_color(180, 190, 220)
+        self.cell(0, 5, "Relatorio Executivo Customizado de Viabilidade de Compostos v10.0",
+                  new_x="LMARGIN", new_y="NEXT", align="C")
+        self.ln(12)
+        self.set_text_color(40, 40, 40)  # corrige texto de corpo herdando cor clara do header
+
+    def footer(self):
+        self.set_y(-15)
+        self.set_font("Helvetica", "I", 8)
+        self.set_text_color(120, 120, 120)
+        self.cell(0, 10, f"Pagina {self.page_no()}", align="C")
+
+    def linha(self, h, txt, **kw):
+        self.cell(0, h, sanitize_pdf_text(txt), new_x="LMARGIN", new_y="NEXT", **kw)
+
+    def bloco(self, h, txt):
+        self.multi_cell(0, h, sanitize_pdf_text(txt), new_x="LMARGIN", new_y="NEXT")
+
+
+def to_pdf_bytes(pdf):
+    saida = pdf.output()
+    return saida.encode("latin-1") if isinstance(saida, str) else bytes(saida)
+
+
+def _novo_pdf():
+    pdf = PDFLaudoPremium()
+    pdf.set_auto_page_break(auto=True, margin=20)
+    pdf.add_page()
+    return pdf
+
+
+def gerar_pdf_laudo(df, descritores=None):
+    pdf = _novo_pdf()
+    for _, row in df.iterrows():
+        pdf.set_font("Helvetica", "B", 12)
+        pdf.linha(10, f"Composto: {row['Nome Oficial']}")
+        pdf.set_font("Helvetica", "", 10)
+        pdf.bloco(5, f"Aplicacao: {row['Aplicação Médica']}")
+        pdf.ln(3)
+    if descritores:
+        pdf.set_font("Helvetica", "B", 11)
+        pdf.linha(7, "Perfil Fisico-Quimico Avancado (RDKit)")
+        pdf.set_font("Helvetica", "", 10)
+        pdf.bloco(5, (f"Peso: {descritores['peso']} g/mol | LogP: {descritores['logp']} | TPSA: {descritores['tpsa']} A2 | "
+                      f"Lig. Rotacionaveis: {descritores['rot_bonds']} | Lipinski: {descritores['lipinski_ok']} | "
+                      f"Veber: {descritores['veber_ok']} | Egan: {descritores['egan_ok']} | "
+                      f"PAINS: {len(descritores['alertas_pains'])} | hERG: {herg_label(descritores['herg'])}"))
+    return to_pdf_bytes(pdf)
+
+
+@st.cache_data(show_spinner=False, max_entries=8)
+def gerar_pdf_laudo_lote(df_exibicao, grafico_img_bytes):
+    pdf = _novo_pdf()
+    pdf.set_font("Helvetica", "B", 12)
+    pdf.linha(7, "1. Sumario Analitico da Triagem Filtrada em Lote")
+    pdf.set_font("Helvetica", "", 10)
+    pdf.linha(5, f"Compostos que atendem aos criterios de filtragem: {len(df_exibicao)} amostras.")
+    pdf.ln(5)
+    if grafico_img_bytes:
+        pdf.set_font("Helvetica", "B", 12)
+        pdf.linha(7, "2. Perfil de Distribuicao de Massa Molecular do Lote")
+        pdf.ln(2)
+        try:
+            pdf.image(io.BytesIO(grafico_img_bytes), x=15, w=180)
+        except Exception as e:
+            logging.error("Erro ao inserir grafico no PDF: %s", e)
+        pdf.ln(5)
+    pdf.add_page()
+    pdf.set_font("Helvetica", "B", 12)
+    pdf.linha(7, "3. Detalhamento Tecnico por Registro Biomolecular")
+    pdf.ln(2)
+    for _, row in df_exibicao.iterrows():
+        pdf.set_fill_color(235, 238, 245)
+        pdf.set_font("Helvetica", "B", 11)
+        pdf.linha(7, f" {row['Nome Oficial']} ({row.get('Fórmula', '-')}) - {row.get('Massa Molecular', '-')}", border=1, fill=True)
+        pdf.ln(1)
+        pdf.set_font("Helvetica", "B", 9)
+        pdf.set_text_color(139, 124, 246)
+        pdf.linha(5, "    Mecanismo e Aplicacao Clinica:")
+        pdf.set_font("Helvetica", "", 9)
+        pdf.set_text_color(50, 50, 50)
+        pdf.bloco(5, f"    {row.get('Aplicação Médica', '')}")
+        if row.get("Referência PubMed"):
+            pdf.set_font("Helvetica", "I", 8)
+            pdf.set_text_color(100, 100, 100)
+            pdf.linha(5, f"    Ref: PMID {row['Referência PubMed']}")
+            pdf.set_text_color(50, 50, 50)
+        pdf.ln(3)
+    return to_pdf_bytes(pdf)
+
+
+@st.cache_data(show_spinner=False, max_entries=8)
+def gerar_pdf_eln(experimentos_json):
+    experimentos = json.loads(experimentos_json)
+    pdf = _novo_pdf()
+    pdf.set_font("Helvetica", "B", 13)
+    pdf.linha(8, "Caderno Eletronico de Laboratorio (ELN)")
+    pdf.ln(2)
+    for exp in experimentos:
+        pdf.set_fill_color(230, 238, 250)
+        pdf.set_font("Helvetica", "B", 11)
+        pdf.linha(7, f"Registro: {exp['nome']}  |  {exp['timestamp']}", border=1, fill=True)
+        pdf.set_font("Helvetica", "", 9)
+        pdf.bloco(5, f"Modulo: {exp['modulo']} | Observacoes: {exp.get('notas') or '-'}")
+        pdf.bloco(5, f"Dados: {json.dumps(exp.get('dados', {}), ensure_ascii=False)}")
+        pdf.ln(3)
+    return to_pdf_bytes(pdf)
+
+
+# ============================ SIDEBAR ============================
+ROTULOS_IDIOMA = {v: k for k, v in IDIOMAS_DISPONIVEIS.items()}
+st.sidebar.selectbox("Idioma / Language / 语言", list(ROTULOS_IDIOMA), format_func=ROTULOS_IDIOMA.get, key="idioma_ativo")
 IDIOMA_ATUAL = st.session_state.idioma_ativo
 
 st.markdown(f"<p style='color: var(--accent-purple, #8b7cf6); font-weight: 700; margin-bottom: -10px; letter-spacing: 0.03em; font-size:0.8rem;'>{t('app_badge')}</p>", unsafe_allow_html=True)
@@ -916,29 +1069,26 @@ st.title(t("app_title"))
 st.markdown("---")
 
 st.sidebar.markdown(f"### {t('sidebar_user_profile')}")
-perfil_usuario = st.sidebar.radio(t("profile_radio_label"), [t("profile_didactic"), t("profile_research")], index=1)
-modo_avancado = perfil_usuario == t("profile_research")
+perfil_usuario = st.sidebar.radio(t("profile_radio_label"), ["didactic", "research"], index=1,
+                                  format_func=lambda k: t(f"profile_{k}"), key="perfil_usuario")
+modo_avancado = perfil_usuario == "research"
 
 st.sidebar.markdown(f"### {t('sidebar_ai')}")
-chave_api_ia = st.sidebar.text_input(t("api_key_label"), type="password", help=t("api_key_help"))
+chave_api_ia = st.sidebar.text_input(t("api_key_label"), type="password", help=t("api_key_help"), key="chave_api_ia")
 
 st.sidebar.markdown(f"### {t('sidebar_clinical_params')}")
-modulo_ativo = st.sidebar.selectbox(
-    t("module_label"),
-    list(MODULE_TRANSLATIONS.keys()),
-    format_func=modulo_nome,
-)
+modulo_ativo = st.sidebar.selectbox(t("module_label"), list(MODULE_TRANSLATIONS), format_func=modulo_nome, key="modulo_ativo")
 
 st.sidebar.markdown(f"### {t('sidebar_filters')}")
-limite_massa = st.sidebar.slider(t("mass_limit_label"), min_value=100, max_value=5000, value=1200, step=50, help=t("mass_limit_help"))
+limite_massa = st.sidebar.slider(t("mass_limit_label"), 100, 5000, 1200, 50, help=t("mass_limit_help"), key="limite_massa")
 if modo_avancado:
-    limite_tpsa = st.sidebar.slider(t("tpsa_limit_label"), min_value=20, max_value=250, value=140, step=5)
-    limite_rot = st.sidebar.slider(t("rot_limit_label"), min_value=1, max_value=25, value=10, step=1)
+    limite_tpsa = st.sidebar.slider(t("tpsa_limit_label"), 20, 250, 140, 5, key="limite_tpsa")
+    limite_rot = st.sidebar.slider(t("rot_limit_label"), 1, 25, 10, 1, key="limite_rot")
 else:
     limite_tpsa, limite_rot = 140, 10
 
 st.sidebar.markdown(f"### {t('sidebar_infra')}")
-modo_offline = st.sidebar.toggle(t("offline_toggle"), value=False)
+modo_offline = st.sidebar.toggle(t("offline_toggle"), value=False, key="modo_offline")
 
 if st.session_state.eln_experimentos:
     st.sidebar.markdown("---")
@@ -949,34 +1099,27 @@ if st.session_state.historico_auditoria:
     st.sidebar.markdown("---")
     st.sidebar.markdown(f"### {t('audit_sidebar_title')}")
     st.sidebar.caption(t("audit_sidebar_caption", n=len(st.session_state.historico_auditoria)))
-    json_historico = json.dumps(st.session_state.historico_auditoria, indent=4, ensure_ascii=False)
-    st.sidebar.download_button(label=t("audit_export_button"), data=json_historico,
-                                file_name=f"auditoria_senotrack_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json", mime="application/json")
+    st.sidebar.download_button(
+        t("audit_export_button"), data=json.dumps(st.session_state.historico_auditoria, indent=4, ensure_ascii=False),
+        file_name=f"auditoria_senotrack_{datetime.now():%Y%m%d_%H%M%S}.json", mime="application/json")
 
-abas = st.tabs([t("tab_individual"), t("tab_lote"), t("tab_fq"), t("tab_docking"), t("tab_benchmark"), t("tab_literature"), t("tab_eln")])
-aba_individual, aba_lote, aba_fq, aba_docking, aba_benchmark, aba_literatura, aba_eln = abas
+aba_individual, aba_lote, aba_fq, aba_docking, aba_benchmark, aba_literatura, aba_eln = st.tabs(
+    [t("tab_individual"), t("tab_lote"), t("tab_fq"), t("tab_docking"), t("tab_benchmark"), t("tab_literature"), t("tab_eln")])
 
-# =====================================================================
-# ABA 1 — PERFIL CLÍNICO INDIVIDUAL
-# =====================================================================
+# ============================ ABA 1 — INDIVIDUAL ============================
 with aba_individual:
-    composto_a = st.text_input(t("input_molecule_label"), placeholder="Ex: dasatinib, sacubitril, semaglutide...", key="input_busca_individual")
-
+    composto_a = st.text_input(t("input_molecule_label"), placeholder="Ex: dasatinib, sacubitril, semaglutide...",
+                               key="input_busca_individual").strip()
     if composto_a:
         dados_locais = obter_dados_cientificos_v2(composto_a, modulo_ativo)
-        prop = consultar_api_pubchem(composto_a, modo_offline=modo_offline)
-        pmid = buscar_pubmed_id(composto_a, modo_offline=modo_offline)
-        rxcui = buscar_interacao_rxnav(composto_a, modo_offline=modo_offline)
+        prop, pmid, rxcui = executar_paralelo(lambda f: f(), [
+            lambda: consultar_api_pubchem(composto_a, modo_offline),
+            lambda: buscar_pubmed_id(composto_a, modo_offline),
+            lambda: buscar_interacao_rxnav(composto_a, modo_offline)], max_workers=3)
 
         if prop:
-            nome = prop["Title"]
-            formula = prop["MolecularFormula"]
-            peso = prop["MolecularWeight"]
-
-            registro = {"timestamp": datetime.now().isoformat(), "modulo": modulo_ativo, "composto_pesquisado": composto_a,
-                        "nome_oficial": nome, "formula": formula, "massa_molecular": peso}
-            if registro not in st.session_state.historico_auditoria:
-                st.session_state.historico_auditoria.append(registro)
+            nome, formula, peso = prop["Title"], prop["MolecularFormula"], prop["MolecularWeight"]
+            registrar_auditoria(modulo_ativo, composto_a, nome, formula, peso)
 
             st.markdown(f"## {nome}")
             c1, c2 = st.columns(2)
@@ -985,7 +1128,6 @@ with aba_individual:
 
             sec_header("flask", t("section_application"))
             st.info(dados_locais["aplicacao"])
-
             sec_header("layers", t("section_pipeline"))
             st.warning(dados_locais["pipeline"])
 
@@ -1000,238 +1142,209 @@ with aba_individual:
                     st.warning(t("pubmed_not_found"))
             with col_rx:
                 sub_label(t("rxnav_label"))
-                if rxcui:
-                    st.info(t("rxnav_found_template", id=rxcui))
-                else:
-                    st.info(t("rxnav_no_data"))
+                st.info(t("rxnav_found_template", id=rxcui) if rxcui else t("rxnav_no_data"))
 
             st.write("---")
             sec_header("sparkles", t("ai_agent_section"))
             st.markdown(t("ai_agent_desc"))
-            if st.button(t("btn_generate_insight", nome=nome)):
-                with st.spinner(t("spinner_generating")):
-                    insight = gerar_insight_ia(nome, formula, peso, modulo_nome(modulo_ativo), chave_api_ia)
-                    st.success(insight)
+            chave_insight = f"insight::{nome.lower()}::{modulo_ativo}"
+            if st.button(t("btn_generate_insight", nome=nome), key="btn_insight"):
+                st.session_state[chave_insight] = True
+            if st.session_state.get(chave_insight):
+                st.success(gerar_insight_ia(nome, formula, peso, modulo_nome(modulo_ativo), chave_api_ia))
 
             st.write("---")
+            smiles_ind = prop.get("SMILES") or None
+            mol_ind = Chem.MolFromSmiles(smiles_ind) if smiles_ind else None
             col_2d, col_3d = st.columns(2)
             with col_2d:
-                if not modo_offline:
-                    st.image(f"https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/name/{composto_a}/PNG", use_container_width=True)
+                svg = gerar_svg_2d(mol_ind) if mol_ind else None
+                if svg:
+                    st.image(svg, **W_IMG)
+                    st.caption(t("structure_2d_caption"))
                 else:
-                    st.info(t("offline_2d_msg"))
-                st.caption(t("structure_2d_caption"))
-
+                    st.info(t("smiles_unavailable_warn"))
             with col_3d:
-                if not modo_offline:
+                sdf = None if modo_offline else buscar_sdf_3d(composto_a)
+                if not sdf and smiles_ind:  # fallback RDKit (também funciona offline)
+                    b = gerar_sdf_bytes(smiles_ind, composto_a)
+                    sdf = b.decode("utf-8") if b else None
+                if sdf:
                     try:
-                        url_sdf = f"https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/name/{composto_a}/SDF?record_type=3d"
-                        res_sdf = requests.get(url_sdf, timeout=8)
-                        if res_sdf.status_code == 200 and res_sdf.text.strip():
-                            xyzview = py3Dmol.view(width=450, height=450)
-                            xyzview.addModel(res_sdf.text, "sdf")
-                            xyzview.setStyle({"stick": {}, "sphere": {"scale": 0.3}})
-                            xyzview.zoomTo()
-                            xyzview.setBackgroundColor("white")
-                            components.html(xyzview._make_html(), height=470, width=470)
-                            st.caption(t("structure_3d_caption"))
-                        else:
-                            st.caption(t("structure3d_unavailable"))
+                        v = py3Dmol.view(width=450, height=450)
+                        v.addModel(sdf, "sdf")
+                        v.setStyle({"stick": {}, "sphere": {"scale": 0.3}})
+                        v.zoomTo()
+                        v.setBackgroundColor("white")
+                        render_py3dmol(v, 470)
+                        st.caption(t("structure_3d_caption"))
                     except Exception as e:
                         st.caption(f"{t('generic_error_prefix')} {e}")
                 else:
-                    st.info(t("offline_3d_msg"))
+                    st.caption(t("structure3d_unavailable"))
 
             st.write("---")
             if st.button(t("btn_save_eln"), key="salvar_eln_individual"):
                 st.session_state.eln_experimentos.append({
-                    "id": str(uuid.uuid4())[:8], "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                    "id": uuid.uuid4().hex[:8], "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                     "nome": nome, "modulo": modulo_ativo, "notas": "",
-                    "dados": {"formula": formula, "peso_molecular": peso, "aplicacao": dados_locais["aplicacao"]}
-                })
+                    "dados": {"formula": formula, "peso_molecular": peso, "aplicacao": dados_locais["aplicacao"]}})
                 st.success(t("eln_saved_success"))
 
             df_individual = pd.DataFrame([{"Nome Oficial": nome, "Aplicação Médica": dados_locais["aplicacao"]}])
-            data_hora_str = datetime.now().strftime("%Y%m%d_%H%M%S")
-            st.download_button(label=t("btn_download_pdf_individual"), data=gerar_pdf_laudo(df_individual),
-                                file_name=f"laudo_{composto_a}_{data_hora_str}.pdf", mime="application/pdf")
+            st.download_button(t("btn_download_pdf_individual"), data=gerar_pdf_laudo(df_individual),
+                               file_name=f"laudo_{composto_a}_{datetime.now():%Y%m%d_%H%M%S}.pdf", mime="application/pdf")
             if IDIOMA_ATUAL in ("zh", "ja"):
                 st.caption(t("cjk_pdf_notice"))
         else:
             st.error(t("error_compound_not_found"))
 
-# =====================================================================
-# ABA 2 — LOTE HOSPITALAR
-# =====================================================================
+# ============================ ABA 2 — LOTE ============================
+COLUNAS_MESTRE = ["Nome Oficial", "Fórmula", "Massa Numérica", "Massa Molecular", "Aplicação Médica",
+                  "Mapeamento Pipeline", "Absorção Oral", "Segurança Laboratorial", "Referência PubMed", "RxNav ID"]
+
+def ler_planilha(arquivo):
+    if arquivo.name.lower().endswith(".csv"):
+        return pd.read_csv(arquivo, sep=None, engine="python", encoding_errors="replace")  # detecta ; e ,
+    return pd.read_excel(arquivo)
+
 with aba_lote:
     st.caption(t("lote_caption"))
-    col_dl1, col_dl2 = st.columns([1, 2])
-    with col_dl1:
-        with open("modelo_triagem_v7.xlsx", "rb") as f:
-            st.download_button(label=t("btn_download_template"), data=f, file_name="modelo_triagem_v7.xlsx",
-                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-
-    arquivo_upload = st.file_uploader(t("uploader_label"), type=["csv", "xlsx"])
+    st.download_button(t("btn_download_template"), data=gerar_modelo_xlsx(),
+                       file_name="modelo_triagem_v7.xlsx", mime=MIME_XLSX)
+    arquivo_upload = st.file_uploader(t("uploader_label"), type=["csv", "xlsx"], key="upload_lote")
 
     if arquivo_upload:
         try:
-            df_lote = pd.read_csv(arquivo_upload) if arquivo_upload.name.endswith(".csv") else pd.read_excel(arquivo_upload)
+            df_lote = ler_planilha(arquivo_upload)
+            nomes = [n for n in dict.fromkeys(df_lote.iloc[:, 0].dropna().astype(str).str.strip().str.lower())
+                     if n and n != "nan"]
+            if len(nomes) > MAX_LOTE:
+                st.warning(t("batch_truncated_warning", max=MAX_LOTE))
+                nomes = nomes[:MAX_LOTE]
 
-            if df_lote.shape[1] > 0:
-                df_lote.rename(columns={df_lote.columns[0]: "Composto"}, inplace=True)
-                list_rows = []
-                with st.spinner(t("spinner_batch_scan")):
-                    for comp in df_lote["Composto"]:
-                        nome_comp = str(comp).strip().lower()
-                        try:
-                            dados_c = obter_dados_cientificos_v2(nome_comp, modulo_ativo)
-                            f_quimica, p_molecular = "-", 350.0
-                            prop_b = consultar_api_pubchem(nome_comp, modo_offline=modo_offline)
-                            pmid_lote = buscar_pubmed_id(nome_comp, modo_offline=modo_offline)
-                            rxcui_lote = buscar_interacao_rxnav(nome_comp, modo_offline=modo_offline)
+            with st.spinner(t("spinner_batch_scan")):
+                coletas = executar_paralelo(lambda n: coletar_dados_externos(n, modo_offline), nomes, max_workers=4)
 
-                            if prop_b:
-                                f_quimica = prop_b["MolecularFormula"]
-                                p_molecular = prop_b["MolecularWeight"]
+            linhas, nao_resolvidos = [], []
+            for nome_comp, col in zip(nomes, coletas):
+                prop_b = (col or {}).get("prop")
+                if not prop_b:
+                    nao_resolvidos.append(nome_comp)
+                    continue
+                dados_c = obter_dados_cientificos_v2(nome_comp, modulo_ativo)
+                p_mol = prop_b["MolecularWeight"]
+                linhas.append({
+                    "Nome Oficial": nome_comp.capitalize(), "Fórmula": prop_b["MolecularFormula"],
+                    "Massa Numérica": p_mol, "Massa Molecular": f"{p_mol} g/mol",
+                    "Aplicação Médica": dados_c["aplicacao"], "Mapeamento Pipeline": dados_c["pipeline"],
+                    "Absorção Oral": t("absorption_high") if p_mol < 500 else t("absorption_moderate"),
+                    "Segurança Laboratorial": analisar_acao_reacao(p_mol, dados_c["tag"]),
+                    "Referência PubMed": col.get("pmid") or "", "RxNav ID": col.get("rxcui") or ""})
 
-                            status_absorcao = t("absorption_high") if p_molecular < 500 else t("absorption_moderate")
-                            seguranca = analisar_acao_reacao(p_molecular, dados_c["tag"])
+            df_mestre = pd.DataFrame(linhas, columns=COLUNAS_MESTRE)
+            df_filtrado = df_mestre[df_mestre["Massa Numérica"] <= limite_massa]
+            itens_excluidos = len(df_mestre) - len(df_filtrado)
+            compostos_com_pubmed = sum(1 for x in df_filtrado["Referência PubMed"] if str(x).strip())
 
-                            list_rows.append({
-                                "Nome Oficial": nome_comp.capitalize(), "Fórmula": f_quimica, "Massa Numérica": p_molecular,
-                                "Massa Molecular": f"{p_molecular} g/mol", "Aplicação Médica": dados_c["aplicacao"],
-                                "Mapeamento Pipeline": dados_c["pipeline"], "Absorção Oral": status_absorcao,
-                                "Segurança Laboratorial": seguranca, "Referência PubMed": pmid_lote or "", "RxNav ID": rxcui_lote or "",
-                            })
-                        except Exception as err_comp:
-                            logging.warning(f"Erro ao processar composto {nome_comp}: {err_comp}")
-                            list_rows.append({
-                                "Nome Oficial": nome_comp.capitalize(), "Fórmula": t("batch_error_formula"), "Massa Numérica": 9999.0,
-                                "Massa Molecular": f"{t('batch_error_formula')} g/mol", "Aplicação Médica": t("batch_error_app"),
-                                "Mapeamento Pipeline": "N/A", "Absorção Oral": t("batch_error_absorption"),
-                                "Segurança Laboratorial": t("batch_error_safety"), "Referência PubMed": "", "RxNav ID": "",
-                            })
+            st.write("---")
+            sec_header("gauge", t("kpi_section"))
+            k1, k2, k3, k4 = st.columns(4)
+            k1.metric(t("kpi_total"), f"{len(nomes)}")
+            k2.metric(t("kpi_approved"), f"{len(df_filtrado)}", delta=f"-{itens_excluidos}" if itens_excluidos else "100%")
+            k3.metric(t("kpi_evidence"), f"{compostos_com_pubmed}")
+            k4.metric(t("kpi_module"), modulo_nome(modulo_ativo))
 
-                df_mestre = pd.DataFrame(list_rows)
-                df_filtrado = df_mestre[df_mestre["Massa Numérica"] <= limite_massa]
-                itens_excluidos = len(df_mestre) - len(df_filtrado)
+            if itens_excluidos:
+                st.warning(t("batch_lipinski_warning", itens=itens_excluidos, limite=limite_massa))
+            if nao_resolvidos:
+                st.warning(t("batch_unresolved_warning", n=len(nao_resolvidos), nomes=", ".join(nao_resolvidos)))
 
-                st.write("---")
-                sec_header("gauge", t("kpi_section"))
-                kpi1, kpi2, kpi3, kpi4 = st.columns(4)
-                compostos_com_pubmed = sum(1 for x in df_filtrado["Referência PubMed"] if str(x).strip())
-                kpi1.metric(t("kpi_total"), f"{len(df_mestre)}")
-                kpi2.metric(t("kpi_approved"), f"{len(df_filtrado)}", delta=f"-{itens_excluidos}" if itens_excluidos > 0 else "100%")
-                kpi3.metric(t("kpi_evidence"), f"{compostos_com_pubmed}")
-                kpi4.metric(t("kpi_module"), modulo_nome(modulo_ativo))
-
-                if itens_excluidos > 0:
-                    st.warning(t("batch_lipinski_warning", itens=itens_excluidos, limite=limite_massa))
-
+            if not df_filtrado.empty:
                 st.write("---")
                 sec_header("sparkles", t("ai_batch_section"))
                 st.markdown(t("ai_batch_desc"))
-                if st.button(t("btn_generate_batch_ai")):
-                    with st.spinner(t("spinner_batch_scan")):
-                        nomes_lote = ", ".join(df_filtrado["Nome Oficial"].tolist())
-                        time.sleep(1.5)
-                        parecer = (
-                            f"**{t('batch_ai_report_title')}**\n\n"
-                            f"{t('batch_ai_analyzed', n=len(df_filtrado), modulo=modulo_nome(modulo_ativo), nomes=nomes_lote)}\n\n"
-                            f"- {t('batch_ai_coherence', modulo=modulo_nome(modulo_ativo))}\n"
-                            f"- {t('batch_ai_pk', n=compostos_com_pubmed)}\n"
-                            f"- {t('batch_ai_recommendation')}"
-                        )
-                        st.success(parecer)
+                chave_parecer = f"parecer::{arquivo_upload.name}::{modulo_ativo}"
+                if st.button(t("btn_generate_batch_ai"), key="btn_parecer_lote"):
+                    st.session_state[chave_parecer] = True
+                if st.session_state.get(chave_parecer):
+                    mod_n = modulo_nome(modulo_ativo)
+                    st.success(
+                        f"**{t('batch_ai_report_title')}**\n\n"
+                        f"{t('batch_ai_analyzed', n=len(df_filtrado), modulo=mod_n, nomes=', '.join(df_filtrado['Nome Oficial']))}\n\n"
+                        f"- {t('batch_ai_coherence', modulo=mod_n)}\n- {t('batch_ai_pk', n=compostos_com_pubmed)}\n"
+                        f"- {t('batch_ai_recommendation')}")
 
                 st.write("---")
                 sec_header("layers", t("matrix_section"))
-                if not df_filtrado.empty:
-                    compostos_validos = df_filtrado.to_dict(orient="records")
-                    colunas_cards = st.columns(min(len(compostos_validos), 3))
-                    for idx, item in enumerate(compostos_validos):
-                        col_idx = idx % 3
-                        with colunas_cards[col_idx]:
-                            pmid_txt = item['Referência PubMed']
-                            if str(pmid_txt).strip():
-                                link_pubmed = f"<a href='https://pubmed.ncbi.nlm.nih.gov/{pmid_txt}/' target='_blank' style='color:var(--accent-purple, #8b5cf6); font-weight:bold; text-decoration:underline;'>PubMed (PMID {pmid_txt})</a>"
-                            else:
-                                link_pubmed = f"<span style='color:var(--text-secondary);'>{t('pubmed_not_found')}</span>"
-                            st.markdown(f"""
-                            <div style='background-color: var(--bg-card); padding: 18px; border-radius: 12px; border-left: 4px solid var(--accent-purple, #8b5cf6); margin-bottom:15px; min-height: 220px; border-top: 1px solid var(--border-subtle); border-right: 1px solid var(--border-subtle); border-bottom: 1px solid var(--border-subtle);'>
-                                <h4 style='margin-top:0; color:var(--text-primary); font-size:16px;'>{item['Nome Oficial']}</h4>
-                                <p style='font-size:13px; margin-bottom:6px; color:var(--text-primary);'><b>{t('metric_formula')}:</b> {item['Fórmula']} | <b>{t('metric_mass')}:</b> {item['Massa Molecular']}</p>
-                                <p style='font-size:12px; margin-bottom:8px; color:var(--accent-purple, #8b5cf6);'><b>{t('rxnav_found_template', id=item['RxNav ID']) if item['RxNav ID'] else t('rxnav_no_data')}</b></p>
-                                <p style='font-size:12px; margin-bottom:10px; color:var(--text-secondary); line-height: 1.4;'>{item['Aplicação Médica']}</p>
-                                <hr style='border: 0.5px solid var(--border-subtle); margin: 8px 0;'>
-                                <p style='font-size:12px; margin-bottom:0;'>{link_pubmed}</p>
-                            </div>
-                            """, unsafe_allow_html=True)
+                esc = html.escape
+                registros = df_filtrado.to_dict(orient="records")
+                cols_cards = st.columns(min(len(registros), 3))
+                for idx, item in enumerate(registros):
+                    with cols_cards[idx % 3]:
+                        pm = str(item["Referência PubMed"]).strip()
+                        link_pubmed = (f"<a href='https://pubmed.ncbi.nlm.nih.gov/{esc(pm)}/' target='_blank' rel='noopener' style='color:var(--accent-purple, #8b5cf6); font-weight:bold; text-decoration:underline;'>PubMed (PMID {esc(pm)})</a>"
+                                       if pm else f"<span style='color:var(--text-secondary);'>{esc(t('pubmed_not_found'))}</span>")
+                        rx = esc(t("rxnav_found_template", id=item["RxNav ID"]) if item["RxNav ID"] else t("rxnav_no_data"))
+                        st.markdown(f"""
+                        <div style='background-color: var(--bg-card); padding: 18px; border-radius: 12px; margin-bottom:15px; min-height: 220px; border: 1px solid var(--border-subtle); border-left: 4px solid var(--accent-purple, #8b5cf6);'>
+                            <h4 style='margin-top:0; color:var(--text-primary); font-size:16px;'>{esc(str(item['Nome Oficial']))}</h4>
+                            <p style='font-size:13px; margin-bottom:6px; color:var(--text-primary);'><b>{esc(t('metric_formula'))}:</b> {esc(str(item['Fórmula']))} | <b>{esc(t('metric_mass'))}:</b> {esc(str(item['Massa Molecular']))}</p>
+                            <p style='font-size:12px; margin-bottom:8px; color:var(--accent-purple, #8b5cf6);'><b>{rx}</b></p>
+                            <p style='font-size:12px; margin-bottom:10px; color:var(--text-secondary); line-height: 1.4;'>{esc(str(item['Aplicação Médica']))}</p>
+                            <hr style='border: 0.5px solid var(--border-subtle); margin: 8px 0;'>
+                            <p style='font-size:12px; margin-bottom:0;'>{link_pubmed}</p>
+                        </div>""", unsafe_allow_html=True)
 
                 st.write("---")
                 sec_header("microscope", t("detail_section"))
-                for idx, row in df_filtrado.iterrows():
+                for _, row in df_filtrado.iterrows():
                     with st.expander(f"{row['Nome Oficial']} — {row['Massa Molecular']}"):
-                        col_exp1, col_exp2 = st.columns(2)
-                        with col_exp1:
+                        e1, e2 = st.columns(2)
+                        with e1:
                             st.write(f"**{t('section_application')}:** {row['Aplicação Médica']}")
                             st.write(f"**{t('section_pipeline')}:** {row['Mapeamento Pipeline']}")
                             st.write(f"**{t('col_oral_absorption')}:** {row['Absorção Oral']}")
-                        with col_exp2:
+                        with e2:
                             st.write(f"**RxNav:** {t('rxnav_found_template', id=row['RxNav ID']) if row['RxNav ID'] else t('rxnav_no_data')}")
                             st.write(f"**PubMed:** {('PMID ' + str(row['Referência PubMed'])) if row['Referência PubMed'] else t('pubmed_not_found')}")
                             st.write(f"**{t('col_lab_safety')}:** {row['Segurança Laboratorial']}")
-                            if str(row['Referência PubMed']).strip():
+                            if str(row["Referência PubMed"]).strip():
                                 st.markdown(f"[{t('pubmed_link')}](https://pubmed.ncbi.nlm.nih.gov/{row['Referência PubMed']}/)")
 
                 st.divider()
                 sec_header("database", t("master_table_title"))
-                df_visualizacao = df_filtrado.drop(columns=["Massa Numérica"]) if not df_filtrado.empty else df_filtrado
-                df_display = renomear_colunas_display(df_visualizacao)
-                st.markdown(df_display.to_html(classes="tabela-v12", index=False, escape=False), unsafe_allow_html=True)
+                df_visualizacao = df_filtrado.drop(columns=["Massa Numérica"])
+                st.markdown(renomear_colunas_display(df_visualizacao).to_html(classes="tabela-v12", index=False),
+                            unsafe_allow_html=True)  # escape=True (padrão)
 
-                if not df_filtrado.empty:
-                    st.divider()
-                    sec_header("bar-chart", t("density_section"))
-                    st.bar_chart(data=df_filtrado, x="Nome Oficial", y="Massa Numérica", color="#8b7cf6")
+                st.divider()
+                sec_header("bar-chart", t("density_section"))
+                st.bar_chart(data=df_filtrado, x="Nome Oficial", y="Massa Numérica", color="#8b7cf6")
+                grafico_bytes = grafico_massa_png(tuple(df_filtrado["Nome Oficial"]), tuple(df_filtrado["Massa Numérica"]),
+                                                  f"{t('col_mol_mass')} (g/mol)")
 
-                    fig, ax = plt.subplots(figsize=(7, 3.5))
-                    fig.patch.set_facecolor('#ffffff')
-                    ax.set_facecolor('#ffffff')
-                    ax.bar(df_filtrado["Nome Oficial"], df_filtrado["Massa Numérica"], color="#8b5cf6", width=0.4)
-                    ax.set_ylabel("Massa Molecular (g/mol)", fontsize=9, color="#262730")
-                    ax.tick_params(axis='both', labelsize=8, colors="#262730")
-                    for spine in ax.spines.values():
-                        spine.set_color('#d0d3db')
-                    plt.tight_layout()
-                    buf = io.BytesIO()
-                    plt.savefig(buf, format='png', dpi=200, facecolor=fig.get_facecolor())
-                    buf.seek(0)
-                    grafico_bytes = buf.getvalue()
-                    plt.close(fig)
-
-                    st.divider()
-                    sec_header("file-text", t("export_section"))
-                    c_pdf, c_json = st.columns([1, 1])
-                    with c_pdf:
-                        data_hora_str = datetime.now().strftime("%Y%m%d_%H%M%S")
-                        st.download_button(label=t("btn_download_pdf_batch"), data=gerar_pdf_laudo_lote(df_visualizacao, grafico_bytes),
-                                            file_name=f"laudo_triagem_lote_{data_hora_str}.pdf", mime="application/pdf", type="primary")
-                        if IDIOMA_ATUAL in ("zh", "ja"):
-                            st.caption(t("cjk_pdf_notice"))
-                    with c_json:
-                        json_lote = df_visualizacao.to_json(orient="records", force_ascii=False, indent=4)
-                        st.download_button(label=t("btn_download_json_batch"), data=json_lote,
-                                            file_name=f"dados_lote_{data_hora_str}.json", mime="application/json")
+                st.divider()
+                sec_header("file-text", t("export_section"))
+                c_pdf, c_json = st.columns(2)
+                carimbo = datetime.now().strftime("%Y%m%d_%H%M%S")
+                with c_pdf:
+                    st.download_button(t("btn_download_pdf_batch"), data=gerar_pdf_laudo_lote(df_visualizacao, grafico_bytes),
+                                       file_name=f"laudo_triagem_lote_{carimbo}.pdf", mime="application/pdf", type="primary")
+                    if IDIOMA_ATUAL in ("zh", "ja"):
+                        st.caption(t("cjk_pdf_notice"))
+                with c_json:
+                    st.download_button(t("btn_download_json_batch"),
+                                       data=df_visualizacao.to_json(orient="records", force_ascii=False, indent=4),
+                                       file_name=f"dados_lote_{carimbo}.json", mime="application/json")
         except Exception as e:
+            logging.exception("Erro no processamento do lote")
             st.error(f"{t('generic_error_prefix')} {e}")
 
-# =====================================================================
-# ABA 3 — TRIAGEM FÍSICO-QUÍMICA
-# =====================================================================
+# ============================ ABA 3 — FÍSICO-QUÍMICA ============================
 with aba_fq:
     st.caption(t("fq_caption"))
-    composto_fq = st.text_input(t("input_fq_label"), placeholder="Ex: navitoclax, tofacitinib...", key="input_fq")
+    composto_fq = st.text_input(t("input_fq_label"), placeholder="Ex: navitoclax, tofacitinib...", key="input_fq").strip()
 
     if composto_fq:
         smiles = obter_smiles_composto(composto_fq, modo_offline)
@@ -1242,104 +1355,112 @@ with aba_fq:
             if descritores is None:
                 st.error(t("error_invalid_smiles"))
             else:
-                st.session_state.cache_moleculas[composto_fq.lower()] = descritores
                 st.markdown(f"## {t('fq_profile_title')} {composto_fq.capitalize()}")
-
                 c1, c2, c3, c4 = st.columns(4)
                 c1.metric(t("metric_mass"), f"{descritores['peso']} g/mol")
-                c2.metric(t("metric_logp"), descritores['logp'])
+                c2.metric(t("metric_logp"), descritores["logp"])
                 c3.metric(t("metric_tpsa"), f"{descritores['tpsa']} Å²")
-                c4.metric(t("metric_rotbonds"), descritores['rot_bonds'])
+                c4.metric(t("metric_rotbonds"), descritores["rot_bonds"])
 
                 st.write("---")
-                col_regras, col_estrutura = st.columns([1, 1])
+                col_regras, col_estrutura = st.columns(2)
                 with col_regras:
                     sec_header("gauge", t("rules_section"))
                     st.markdown(f"**{t('rule_lipinski')}:** {t('rule_pass') if descritores['lipinski_ok'] else t('rule_fail')} — {descritores['violacoes_lipinski']} {t('rule_violations')}")
-                    veber_pass = descritores['rot_bonds'] <= limite_rot and descritores['tpsa'] <= limite_tpsa
+                    veber_pass = descritores["rot_bonds"] <= limite_rot and descritores["tpsa"] <= limite_tpsa
                     st.markdown(f"**{t('rule_veber')}** (Rot. Bonds ≤ {limite_rot}, TPSA ≤ {limite_tpsa} Å²): {t('rule_pass') if veber_pass else t('rule_fail')}")
                     st.markdown(f"**{t('rule_egan')}** (LogP ≤ 5.88, TPSA ≤ 131.6 Å²): {t('rule_pass') if descritores['egan_ok'] else t('rule_fail')}")
 
                     if modo_avancado:
                         st.write("---")
                         sec_header("shield", t("pains_section"))
-                        if descritores['alertas_pains']:
-                            for alerta in descritores['alertas_pains']:
+                        if descritores["alertas_pains"]:
+                            for alerta in descritores["alertas_pains"]:
                                 st.error(f"{t('pains_alert_prefix')} {alerta}")
                         else:
                             st.success(t("pains_none"))
 
                         st.write("---")
                         sec_header("activity", t("herg_section"))
-                        herg = descritores['herg']
-                        st.markdown(f"**{t('herg_risk_label')}** {herg['risco']}")
-                        st.caption(f"Score: {herg['score']}/7 | LogP: {herg['logp']} | {herg['aneis_aromaticos']} | N: {herg['n_basicos']}")
+                        herg = descritores["herg"]
+                        st.markdown(f"**{t('herg_risk_label')}** {herg_label(herg)}")
+                        st.caption(t("herg_detail", score=herg["score"], max=HERG_SCORE_MAX, logp=herg["logp"],
+                                     aneis=herg["aneis_aromaticos"], nb=herg["n_basicos"]))
                         st.caption(t("herg_disclaimer"))
                     else:
                         st.info(t("didactic_notice_fq"))
 
                 with col_estrutura:
                     sec_header("flask", t("structure2d_section"))
-                    svg_2d = gerar_svg_2d(descritores['mol'])
+                    svg_2d = gerar_svg_2d(descritores["mol"])
                     if svg_2d:
-                        st.image(svg_2d, use_container_width=True)
+                        st.image(svg_2d, **W_IMG)
                     if modo_avancado:
-                        sdf_bytes = gerar_sdf_bytes(descritores['mol'], composto_fq)
+                        sdf_bytes = gerar_sdf_bytes(smiles, composto_fq)
                         if sdf_bytes:
-                            st.download_button(t("btn_download_sdf"), data=sdf_bytes, file_name=f"{composto_fq}_3d.sdf", mime="chemical/x-mdl-sdfile")
+                            st.download_button(t("btn_download_sdf"), data=sdf_bytes, file_name=f"{composto_fq}_3d.sdf",
+                                               mime="chemical/x-mdl-sdfile")
+                        else:
+                            st.caption(t("structure3d_unavailable"))
 
-# =====================================================================
-# ABA 4 — DOCKING VIRTUAL & PROTEÔMICA
-# =====================================================================
+# ============================ ABA 4 — DOCKING ============================
 with aba_docking:
     st.caption(t("docking_caption"))
     col_prot, col_lig = st.columns(2)
+    pdb_texto, pdb_nome_ref = None, None
+
     with col_prot:
         sec_header("layers", t("protein_target_section"))
-        modo_pdb = st.radio(t("pdb_source_label"), [t("pdb_search_option"), t("pdb_upload_option")], horizontal=True)
-        pdb_texto = None
-        pdb_nome_ref = None
-
-        if modo_pdb == t("pdb_search_option"):
-            pdb_id = st.text_input(t("pdb_id_label"), value="1IEP")
+        modo_pdb = st.radio(t("pdb_source_label"), ["search", "upload"], horizontal=True, key="modo_pdb",
+                            format_func=lambda k: t("pdb_search_option" if k == "search" else "pdb_upload_option"))
+        if modo_pdb == "search":
+            pdb_id = st.text_input(t("pdb_id_label"), value="1IEP", max_chars=4, key="pdb_id").strip()
             if pdb_id:
-                pdb_texto = buscar_pdb_rcsb(pdb_id, modo_offline=modo_offline)
-                pdb_nome_ref = pdb_id.upper()
-                if pdb_texto is None and not modo_offline:
-                    st.warning(t("pdb_not_found"))
+                if not PDB_ID_RE.match(pdb_id):
+                    st.warning(t("pdb_invalid_id"))
                 elif modo_offline:
                     st.info(t("pdb_offline_notice"))
+                else:
+                    pdb_texto = buscar_pdb_rcsb(pdb_id)
+                    pdb_nome_ref = pdb_id.upper()
+                    if pdb_texto is None:
+                        st.warning(t("pdb_not_found"))
         else:
-            arquivo_pdb = st.file_uploader(t("pdb_upload_label"), type=["pdb"])
+            arquivo_pdb = st.file_uploader(t("pdb_upload_label"), type=["pdb"], key="upload_pdb")
             if arquivo_pdb:
-                pdb_texto = arquivo_pdb.read().decode("utf-8", errors="ignore")
-                pdb_nome_ref = arquivo_pdb.name
+                raw = arquivo_pdb.getvalue()
+                if len(raw) > MAX_PDB_BYTES or b"ATOM" not in raw:
+                    st.warning(t("pdb_invalid_file"))
+                else:
+                    pdb_texto, pdb_nome_ref = raw.decode("utf-8", errors="ignore"), arquivo_pdb.name
 
         if pdb_texto:
             try:
-                view_prot = py3Dmol.view(width=480, height=420)
-                view_prot.addModel(pdb_texto, "pdb")
-                view_prot.setStyle({"cartoon": {"color": "spectrum"}})
-                view_prot.addSurface(py3Dmol.VDW, {"opacity": 0.15, "color": "white"})
-                view_prot.zoomTo()
-                view_prot.setBackgroundColor("white")
-                components.html(view_prot._make_html(), height=440, width=500)
-                st.caption(f"{pdb_nome_ref}")
+                n_atomos = pdb_texto.count("\nATOM") + pdb_texto.count("\nHETATM")
+                v = py3Dmol.view(width=480, height=420)
+                v.addModel(pdb_texto, "pdb")
+                v.setStyle({"cartoon": {"color": "spectrum"}})
+                if n_atomos <= MAX_PDB_ATOMS_SURFACE:  # superfície VDW trava o browser em proteínas grandes
+                    v.addSurface(py3Dmol.VDW, {"opacity": 0.15, "color": "white"})
+                v.zoomTo()
+                v.setBackgroundColor("white")
+                render_py3dmol(v, 440)
+                st.caption(pdb_nome_ref)
             except Exception as e:
                 st.error(f"{t('pdb_render_error')} {e}")
 
     with col_lig:
         sec_header("flask", t("ligand_section"))
-        composto_dock = st.text_input(t("ligand_input_label"), placeholder="Ex: dasatinib, tofacitinib...", key="input_docking")
+        composto_dock = st.text_input(t("ligand_input_label"), placeholder="Ex: dasatinib, tofacitinib...",
+                                      key="input_docking").strip()
         descritores_dock = None
         if composto_dock:
             smiles_dock = obter_smiles_composto(composto_dock, modo_offline)
             if smiles_dock:
                 descritores_dock = calcular_descritores_rdkit(smiles_dock)
-                if descritores_dock:
-                    svg_lig = gerar_svg_2d(descritores_dock['mol'], tamanho=(420, 380))
-                    if svg_lig:
-                        st.image(svg_lig, use_container_width=True)
+                svg_lig = gerar_svg_2d(descritores_dock["mol"], (420, 380)) if descritores_dock else None
+                if svg_lig:
+                    st.image(svg_lig, **W_IMG)
             else:
                 st.warning(t("smiles_unavailable_warn"))
 
@@ -1347,22 +1468,21 @@ with aba_docking:
     if pdb_texto and descritores_dock:
         sec_header("gauge", t("docking_score_section"))
         st.caption(t("docking_disclaimer"))
+        d_peso, d_logp, d_rot = descritores_dock["peso"], descritores_dock["logp"], descritores_dock["rot_bonds"]
+        s_tam = max(0, 10 - abs(d_peso - 350) / 40)
+        s_lip = max(0, 10 - abs(d_logp - 2.5) * 2)
+        s_flex = max(0, 10 - d_rot * 0.6)
+        s_final = round((s_tam + s_lip + s_flex) / 3, 1)
 
-        peso, logp, rot = descritores_dock['peso'], descritores_dock['logp'], descritores_dock['rot_bonds']
-        score_tamanho = max(0, 10 - abs(peso - 350) / 40)
-        score_lipofilicidade = max(0, 10 - abs(logp - 2.5) * 2)
-        score_flexibilidade = max(0, 10 - rot * 0.6)
-        score_final = round((score_tamanho + score_lipofilicidade + score_flexibilidade) / 3, 1)
+        cA, cB, cC, cD = st.columns(4)
+        cA.metric(t("score_size"), f"{s_tam:.1f}/10")
+        cB.metric(t("score_lipo"), f"{s_lip:.1f}/10")
+        cC.metric(t("score_flex"), f"{s_flex:.1f}/10")
+        cD.metric(t("score_combined"), f"{s_final}/10")
 
-        colA, colB, colC, colD = st.columns(4)
-        colA.metric(t("score_size"), f"{score_tamanho:.1f}/10")
-        colB.metric(t("score_lipo"), f"{score_lipofilicidade:.1f}/10")
-        colC.metric(t("score_flex"), f"{score_flexibilidade:.1f}/10")
-        colD.metric(t("score_combined"), f"{score_final}/10")
-
-        if score_final >= 7:
+        if s_final >= 7:
             st.success(t("docking_good"))
-        elif score_final >= 4:
+        elif s_final >= 4:
             st.warning(t("docking_moderate"))
         else:
             st.error(t("docking_bad"))
@@ -1370,128 +1490,99 @@ with aba_docking:
         if modo_avancado:
             st.write("---")
             sec_header("shield", t("offtarget_section"))
-            st.markdown(f"**hERG:** {descritores_dock['herg']['risco']}")
+            st.markdown(f"**hERG:** {herg_label(descritores_dock['herg'])}")
     else:
         st.info(t("docking_empty_notice"))
 
-# =====================================================================
-# ABA 5 — FARMACOTERAPIA & BENCHMARK
-# =====================================================================
+# ============================ ABA 5 — BENCHMARK ============================
 with aba_benchmark:
     st.caption(t("benchmark_caption"))
     sec_header("bar-chart", t("molecule_select_section"))
-    farmaco_sugerido = FARMACO_CONTROLE_POR_MODULO.get(modulo_ativo, "dasatinib")
-    texto_compostos = st.text_input(
-        t("benchmark_input_label"),
-        value=f"{farmaco_sugerido}, quercetin",
-        help=t("benchmark_input_help"),
-        key="input_benchmark_freeform",
-    )
-    compostos_selecionados = [c.strip() for c in texto_compostos.split(",") if c.strip()]
-    # remove duplicatas preservando a ordem de digitação
-    compostos_selecionados = list(dict.fromkeys(compostos_selecionados))
-    if len(compostos_selecionados) > 6:
+    farmaco_controle = FARMACO_CONTROLE_POR_MODULO.get(modulo_ativo, "dasatinib")
+    texto_compostos = st.text_input(t("benchmark_input_label"), value=f"{farmaco_controle}, quercetin",
+                                    help=t("benchmark_input_help"), key=f"input_benchmark_{modulo_ativo}")
+    compostos = list(dict.fromkeys(c.strip().lower() for c in texto_compostos.split(",") if c.strip()))
+    if len(compostos) > 6:
         st.warning(t("benchmark_too_many_warn"))
-        compostos_selecionados = compostos_selecionados[:6]
+        compostos = compostos[:6]
 
-    if len(compostos_selecionados) >= 2:
-        perfis = {}
+    if len(compostos) >= 2:
+        alvos = list(dict.fromkeys(compostos + [farmaco_controle]))
         with st.spinner(t("spinner_batch_scan")):
-            for comp in compostos_selecionados:
-                smiles_c = obter_smiles_composto(comp, modo_offline)
-                perfis[comp] = calcular_descritores_rdkit(smiles_c) if smiles_c else None
+            resultados = executar_paralelo(
+                lambda c: calcular_descritores_rdkit(obter_smiles_composto(c, modo_offline)), alvos, max_workers=4)
+        perfis_validos = {k: v for k, v in zip(alvos, resultados) if v}
+        validos_usuario = [c for c in compostos if c in perfis_validos]
 
-        perfis_validos = {k: v for k, v in perfis.items() if v is not None}
-
-        if len(perfis_validos) >= 2:
+        if len(validos_usuario) >= 2:
             st.write("---")
             sec_header("layers", t("synergy_matrix_title"))
             linhas_matriz = []
-            nomes_validos = list(perfis_validos.keys())
-            for i in range(len(nomes_validos)):
-                linha = {"Composto": nomes_validos[i].capitalize()}
-                for j in range(len(nomes_validos)):
-                    if i == j:
-                        linha[nomes_validos[j].capitalize()] = "—"
-                    else:
-                        p1, p2 = perfis_validos[nomes_validos[i]], perfis_validos[nomes_validos[j]]
-                        similaridade = round(100 - (abs(p1['logp'] - p2['logp']) * 10 + abs(p1['tpsa'] - p2['tpsa']) * 0.3), 1)
-                        similaridade = max(0, min(100, similaridade))
-                        classificacao = t("synergy_high") if similaridade > 70 else (t("synergy_moderate") if similaridade > 40 else t("synergy_low"))
-                        linha[nomes_validos[j].capitalize()] = f"{similaridade}% — {classificacao}"
+            for ni in validos_usuario:
+                linha = {"Composto": ni.capitalize()}
+                for nj in validos_usuario:
+                    if ni == nj:
+                        linha[nj.capitalize()] = "—"
+                        continue
+                    p1, p2 = perfis_validos[ni], perfis_validos[nj]
+                    sim = round(100 - (abs(p1["logp"] - p2["logp"]) * 10 + abs(p1["tpsa"] - p2["tpsa"]) * 0.3), 1)
+                    sim = max(0, min(100, sim))
+                    classe = t("synergy_high") if sim > 70 else t("synergy_moderate") if sim > 40 else t("synergy_low")
+                    linha[nj.capitalize()] = f"{sim}% — {classe}"
                 linhas_matriz.append(linha)
-            df_matriz = pd.DataFrame(linhas_matriz).set_index("Composto")
-            st.dataframe(df_matriz, use_container_width=True)
+            st.dataframe(pd.DataFrame(linhas_matriz).set_index("Composto"), **W_DF)
             st.caption(t("synergy_disclaimer"))
 
             st.write("---")
-            sec_header("target" if "target" in ICON_PATHS else "bar-chart", t("radar_section"))
-            farmaco_controle = FARMACO_CONTROLE_POR_MODULO.get(modulo_ativo, nomes_validos[0])
+            sec_header("bar-chart", t("radar_section"))
             st.markdown(f"**{t('gold_standard_label')} “{modulo_nome(modulo_ativo)}”:** `{farmaco_controle}`")
 
-            if farmaco_controle not in perfis_validos:
-                smiles_ctrl = obter_smiles_composto(farmaco_controle, modo_offline)
-                if smiles_ctrl:
-                    perfis_validos[farmaco_controle] = calcular_descritores_rdkit(smiles_ctrl)
+            categorias = [t("col_mol_mass"), t("metric_logp"), t("metric_tpsa"), t("metric_rotbonds"), t("radar_herg_axis")]
 
-            categorias = ["Peso Molecular", "LogP", "TPSA", "Flexibilidade", "hERG (invertido)"]
-
-            def normalizar_radar(perfil):
-                herg_score_invertido = max(0, 7 - perfil['herg']['score'])
-                return [
-                    max(0, 100 - abs(perfil['peso'] - 350) / 5),
-                    max(0, 100 - abs(perfil['logp'] - 2.5) * 12),
-                    max(0, 100 - abs(perfil['tpsa'] - 70) * 0.8),
-                    max(0, 100 - perfil['rot_bonds'] * 8),
-                    herg_score_invertido / 7 * 100,
-                ]
+            def normalizar_radar(p):
+                return [max(0, 100 - abs(p["peso"] - 350) / 5),
+                        max(0, 100 - abs(p["logp"] - 2.5) * 12),
+                        max(0, 100 - abs(p["tpsa"] - 70) * 0.8),
+                        max(0, 100 - p["rot_bonds"] * 8),
+                        (HERG_SCORE_MAX - p["herg"]["score"]) / HERG_SCORE_MAX * 100]
 
             fig_radar = go.Figure()
             for nome_c, perfil_c in perfis_validos.items():
-                if perfil_c is None:
-                    continue
-                valores = normalizar_radar(perfil_c)
+                vals = normalizar_radar(perfil_c)
                 fig_radar.add_trace(go.Scatterpolar(
-                    r=valores + [valores[0]], theta=categorias + [categorias[0]], fill='toself',
-                    name=nome_c.capitalize() + (" ★" if nome_c == farmaco_controle else "")
-                ))
+                    r=vals + [vals[0]], theta=categorias + [categorias[0]], fill="toself",
+                    name=nome_c.capitalize() + (" ★" if nome_c == farmaco_controle else "")))
             fig_radar.update_layout(
                 polar=dict(bgcolor="rgba(0,0,0,0)", radialaxis=dict(visible=True, range=[0, 100], gridcolor="rgba(128,128,128,0.35)")),
-                paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", showlegend=True,
-            )
-            st.plotly_chart(fig_radar, use_container_width=True, theme="streamlit")
+                paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", showlegend=True)
+            st.plotly_chart(fig_radar, theme="streamlit", key="radar_benchmark", **W_PLOT)
         else:
             st.warning(t("benchmark_invalid_smiles_warn"))
     else:
         st.info(t("benchmark_min_molecules_warn"))
 
-# =====================================================================
-# ABA 6 — AGENTE CLÍNICO & LITERATURA
-# =====================================================================
+# ============================ ABA 6 — LITERATURA ============================
 with aba_literatura:
     st.caption(t("literature_caption"))
-    composto_lit = st.text_input(t("literature_input_label"), placeholder="Ex: rapamycin, empagliflozin...", key="input_literatura")
+    composto_lit = st.text_input(t("literature_input_label"), placeholder="Ex: rapamycin, empagliflozin...",
+                                 key="input_literatura").strip()
 
     if composto_lit:
         dados_locais_lit = obter_dados_cientificos_v2(composto_lit, modulo_ativo)
-        pmid_lit = buscar_pubmed_id(composto_lit, modo_offline=modo_offline)
+        pmid_lit = buscar_pubmed_id(composto_lit, modo_offline)
+        meta_lit = buscar_metadados_pubmed(pmid_lit, modo_offline) if pmid_lit else {}
 
         sec_header("book-open", t("evidence_section"))
         if pmid_lit:
-            titulo_artigo = buscar_titulo_pubmed(pmid_lit, modo_offline=modo_offline)
+            titulo_artigo = meta_lit.get("title", "")
             classificacao = classificar_evidencia_ia(titulo_artigo, pmid_lit)
             c1, c2 = st.columns([2, 1])
             with c1:
-                st.markdown(f"**{t('title_retrieved_label')}** {titulo_artigo if titulo_artigo else t('title_unavailable')}")
+                st.markdown(f"**{t('title_retrieved_label')}** {titulo_artigo or t('title_unavailable')}")
                 st.markdown(f"**PMID:** {pmid_lit}")
                 st.markdown(f"[PubMed](https://pubmed.ncbi.nlm.nih.gov/{pmid_lit}/)")
             with c2:
-                if classificacao['cor'] == "green":
-                    st.success(f"**{classificacao['nivel']}**")
-                elif classificacao['cor'] == "orange":
-                    st.warning(f"**{classificacao['nivel']}**")
-                else:
-                    st.info(f"**{classificacao['nivel']}**")
+                {"green": st.success, "orange": st.warning}.get(classificacao["cor"], st.info)(f"**{classificacao['nivel']}**")
                 st.caption(f"{t('confidence_factor_label')} {classificacao['fator_confianca']}")
             if modo_avancado:
                 st.caption(t("evidence_advanced_note"))
@@ -1501,52 +1592,57 @@ with aba_literatura:
         st.write("---")
         sec_header("sparkles", t("moa_section"))
         if st.button(t("btn_generate_moa"), key="btn_moa"):
+            st.session_state["moa_ativo"] = (composto_lit.lower(), modulo_ativo)
+        if st.session_state.get("moa_ativo") == (composto_lit.lower(), modulo_ativo):
             smiles_lit = obter_smiles_composto(composto_lit, modo_offline)
-            descritores_lit = calcular_descritores_rdkit(smiles_lit) if smiles_lit else None
-            with st.spinner(t("spinner_moa")):
-                if descritores_lit:
-                    moa_texto = gerar_moa_ia(composto_lit, dados_locais_lit["classe"], descritores_lit, modulo_ativo)
-                else:
-                    moa_texto = gerar_moa_ia(composto_lit, dados_locais_lit["classe"], {"logp": 0, "peso": 0}, modulo_ativo)
-                st.success(moa_texto)
+            desc_lit = calcular_descritores_rdkit(smiles_lit) if smiles_lit else None
+            st.success(gerar_moa_ia(composto_lit, dados_locais_lit["classe"], desc_lit, modulo_ativo))
 
         st.write("---")
         sec_header("file-text", t("citation_section"))
         if pmid_lit:
-            titulo_ref = buscar_titulo_pubmed(pmid_lit, modo_offline=modo_offline)
             col_bib, col_ris = st.columns(2)
             with col_bib:
-                st.download_button(t("btn_export_bib"), data=gerar_bibtex(composto_lit, pmid_lit, titulo_ref),
-                                    file_name=f"{composto_lit}_citacao.bib", mime="application/x-bibtex")
+                st.download_button(t("btn_export_bib"), data=gerar_bibtex(composto_lit, pmid_lit, meta_lit),
+                                   file_name=f"{composto_lit}_citacao.bib", mime="application/x-bibtex")
             with col_ris:
-                st.download_button(t("btn_export_ris"), data=gerar_ris(composto_lit, pmid_lit, titulo_ref),
-                                    file_name=f"{composto_lit}_citacao.ris", mime="application/x-research-info-systems")
+                st.download_button(t("btn_export_ris"), data=gerar_ris(composto_lit, pmid_lit, meta_lit),
+                                   file_name=f"{composto_lit}_citacao.ris", mime="application/x-research-info-systems")
 
-# =====================================================================
-# ABA 7 — CADERNO CIENTÍFICO (ELN)
-# =====================================================================
+# ============================ ABA 7 — ELN ============================
+def _salvar_experimento_manual(modulo, offline):
+    nome = (st.session_state.get("exp_nome") or "").strip()
+    if not nome:
+        return
+    dados = {}
+    smiles = obter_smiles_composto(nome, offline)
+    desc = calcular_descritores_rdkit(smiles) if smiles else None
+    if desc:
+        dados = {"peso": desc["peso"], "logp": desc["logp"], "tpsa": desc["tpsa"], "lipinski_ok": desc["lipinski_ok"],
+                 "veber_ok": desc["veber_ok"], "egan_ok": desc["egan_ok"], "risco_herg": desc["herg"]["codigo"]}
+    st.session_state.eln_experimentos.append({
+        "id": uuid.uuid4().hex[:8], "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "nome": nome, "modulo": modulo, "notas": st.session_state.get("exp_notas", ""), "dados": dados})
+    st.session_state["flash_eln"] = t("exp_saved_success", nome=nome)
+
+def _remover_experimento(exp_id):
+    st.session_state.eln_experimentos = [e for e in st.session_state.eln_experimentos if e["id"] != exp_id]
+
+def _limpar_eln():
+    st.session_state.eln_experimentos = []
+
 with aba_eln:
     st.caption(t("eln_caption"))
+    flash = st.session_state.pop("flash_eln", None)
+    if flash:
+        st.success(flash)
+
     with st.expander(t("new_experiment_expander")):
-        with st.form("form_novo_experimento"):
-            nome_exp = st.text_input(t("exp_name_label"))
-            notas_exp = st.text_area(t("exp_notes_label"))
-            submitted = st.form_submit_button(t("btn_save_experiment"))
-            if submitted and nome_exp:
-                dados_exp = {}
-                smiles_exp = obter_smiles_composto(nome_exp, modo_offline)
-                if smiles_exp:
-                    desc_exp = calcular_descritores_rdkit(smiles_exp)
-                    if desc_exp:
-                        dados_exp = {"peso": desc_exp["peso"], "logp": desc_exp["logp"], "tpsa": desc_exp["tpsa"],
-                                     "lipinski_ok": desc_exp["lipinski_ok"], "veber_ok": desc_exp["veber_ok"],
-                                     "egan_ok": desc_exp["egan_ok"], "risco_herg": desc_exp["herg"]["risco"]}
-                st.session_state.eln_experimentos.append({
-                    "id": str(uuid.uuid4())[:8], "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                    "nome": nome_exp, "modulo": modulo_ativo, "notas": notas_exp, "dados": dados_exp
-                })
-                st.success(t("exp_saved_success", nome=nome_exp))
-                st.rerun()
+        with st.form("form_novo_experimento", clear_on_submit=True):
+            st.text_input(t("exp_name_label"), key="exp_nome")
+            st.text_area(t("exp_notes_label"), key="exp_notas")
+            st.form_submit_button(t("btn_save_experiment"), on_click=_salvar_experimento_manual,
+                                  args=(modulo_ativo, modo_offline))
 
     st.write("---")
     sec_header("clipboard", t("registered_experiments_title"))
@@ -1555,32 +1651,29 @@ with aba_eln:
     else:
         for exp in reversed(st.session_state.eln_experimentos):
             with st.expander(f"{exp['nome']} — {exp['timestamp']} ({modulo_nome(exp['modulo'])})"):
-                st.json(exp['dados']) if exp['dados'] else st.caption(t("no_fq_data_caption"))
-                st.write(f"**{t('notes_label_short')}** {exp.get('notas', '-')}")
-                if st.button(t("btn_delete_record"), key=f"del_{exp['id']}"):
-                    st.session_state.eln_experimentos = [e for e in st.session_state.eln_experimentos if e['id'] != exp['id']]
-                    st.rerun()
+                if exp["dados"]:
+                    st.json(exp["dados"])
+                else:
+                    st.caption(t("no_fq_data_caption"))
+                st.write(f"**{t('notes_label_short')}** {exp.get('notas') or '-'}")
+                st.button(t("btn_delete_record"), key=f"del_{exp['id']}", on_click=_remover_experimento, args=(exp["id"],))
 
         st.write("---")
         sec_header("file-text", t("eln_export_section"))
+        carimbo = datetime.now().strftime("%Y%m%d_%H%M%S")
+        json_eln = json.dumps(st.session_state.eln_experimentos, indent=4, ensure_ascii=False)
         col_e1, col_e2, col_e3 = st.columns(3)
         with col_e1:
-            json_eln = json.dumps(st.session_state.eln_experimentos, indent=4, ensure_ascii=False)
-            st.download_button(t("btn_export_all_json"), data=json_eln,
-                                file_name=f"eln_senotrack_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json", mime="application/json")
+            st.download_button(t("btn_export_all_json"), data=json_eln, file_name=f"eln_senotrack_{carimbo}.json", mime="application/json")
         with col_e2:
-            st.download_button(t("btn_export_pdf_consolidated"), data=gerar_pdf_eln(st.session_state.eln_experimentos),
-                                file_name=f"eln_senotrack_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf", mime="application/pdf")
+            st.download_button(t("btn_export_pdf_consolidated"), data=gerar_pdf_eln(json_eln),
+                               file_name=f"eln_senotrack_{carimbo}.pdf", mime="application/pdf")
         with col_e3:
-            df_eln_export = pd.DataFrame([{"Composto": e["nome"], "Timestamp": e["timestamp"], "Módulo": modulo_nome(e["modulo"]),
-                                            "Notas": e.get("notas", ""), **e.get("dados", {})} for e in st.session_state.eln_experimentos])
-            csv_eln = df_eln_export.to_csv(index=False).encode("utf-8")
-            st.download_button(t("btn_export_csv"), data=csv_eln,
-                                file_name=f"eln_senotrack_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv", mime="text/csv")
-
+            df_eln = pd.DataFrame([{"Composto": e["nome"], "Timestamp": e["timestamp"], "Módulo": modulo_nome(e["modulo"]),
+                                    "Notas": e.get("notas", ""), **e.get("dados", {})} for e in st.session_state.eln_experimentos])
+            st.download_button(t("btn_export_csv"), data=df_eln.to_csv(index=False).encode("utf-8-sig"),
+                               file_name=f"eln_senotrack_{carimbo}.csv", mime="text/csv")
         if IDIOMA_ATUAL in ("zh", "ja"):
             st.caption(t("cjk_pdf_notice"))
 
-        if st.button(t("btn_clear_notebook")):
-            st.session_state.eln_experimentos = []
-            st.rerun()
+        st.button(t("btn_clear_notebook"), key="btn_clear_eln", on_click=_limpar_eln)
